@@ -40,6 +40,11 @@ class FlashNormformerBlock(nn.Module):
 
     def forward(self, x, mask=None, return_attn_weights=False):
         B, T, C = x.shape
+        if mask is not None:
+            if mask.ndim == 3:
+                mask = mask.squeeze(1)
+            x = x * mask.unsqueeze(-1)
+
         x_norm = self.norm1(x)
         qkv = self.qkv_proj(x_norm).chunk(3, dim=-1)
 
@@ -49,14 +54,22 @@ class FlashNormformerBlock(nn.Module):
         v = qkv[2].view(B, T, self.num_heads, self.head_dim).transpose(1, 2)
 
         if USE_FLASH:
+            if mask is not None:
+                bool_mask = (mask == 0).unsqueeze(1).expand(B, self.num_heads, T, T)
+                attn_mask = bool_mask.reshape(B * self.num_heads, T, T)
+            else:
+                attn_mask = None
             attn_out = F.scaled_dot_product_attention(
                 q, k, v,
-                attn_mask=None,
+                attn_mask=attn_mask,
                 dropout_p=self.dropout.p if self.training else 0.0,
                 is_causal=False,
             )
         else:
             attn_scores = (q @ k.transpose(-2, -1)) / math.sqrt(self.head_dim)
+            if mask is not None:
+                mask_exp = mask.unsqueeze(1).unsqueeze(2)
+                attn_scores = attn_scores.masked_fill(mask_exp == 0, float('-inf'))
             attn_probs = torch.softmax(attn_scores, dim=-1)
             attn_probs = self.dropout(attn_probs)
             attn_out = attn_probs @ v
