@@ -19,7 +19,7 @@ os.makedirs(PLOT_DIR, exist_ok=True)
 # === W&B Init ===
 wandb.init(project="vqvae-normformer-flash_new", config={
     "batch_size": 512,
-    "num_epochs": 10,
+    "num_epochs": 1,
     "learning_rate": 2e-4,
     "vq_kwargs": {"num_codes": 2048, "beta": 0.25, "affine_lr": 0.0, "sync_nu": 2, "replace_freq": 20, "dim": -1},
 })

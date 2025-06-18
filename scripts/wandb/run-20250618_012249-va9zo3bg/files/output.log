@@ -1,0 +1,46 @@
+Loading file 70 for label HToBB
+Loading file 71 for label HToBB
+Loading file 72 for label HToBB
+Loading file 73 for label HToBB
+Loading file 74 for label HToBB
+Loading file 75 for label HToBB
+Loading file 76 for label HToBB
+Loading file 77 for label HToBB
+Loading file 78 for label HToBB
+Loading file 79 for label HToBB
+/pscratch/sd/h/haoming/Projects/hep_models/scripts/new_train_masked.py:63: FutureWarning: `torch.cuda.amp.GradScaler(args...)` is deprecated. Please use `torch.amp.GradScaler('cuda', args...)` instead.
+  scaler = GradScaler()
+/pscratch/sd/h/haoming/Projects/hep_models/scripts/new_train_masked.py:77: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with autocast():
+Traceback (most recent call last):
+  File "/pscratch/sd/h/haoming/Projects/hep_models/scripts/new_train_masked.py", line 78, in <module>
+    x_recon, loss_dict = model(x_particles_normed, mask=mask)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/homes/h/haoming/.local/perlmutter/python-3.11/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/homes/h/haoming/.local/perlmutter/python-3.11/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/pscratch/sd/h/haoming/Projects/hep_models/models/NormFormer_Flash.py", line 151, in forward
+    x = self.encoder_normformer(x, mask=mask)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/homes/h/haoming/.local/perlmutter/python-3.11/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/homes/h/haoming/.local/perlmutter/python-3.11/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/pscratch/sd/h/haoming/Projects/hep_models/models/NormFormer_Flash.py", line 107, in forward
+    x = block(x, mask=mask)
+        ^^^^^^^^^^^^^^^^^^^
+  File "/global/homes/h/haoming/.local/perlmutter/python-3.11/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1739, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/homes/h/haoming/.local/perlmutter/python-3.11/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1750, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/pscratch/sd/h/haoming/Projects/hep_models/models/NormFormer_Flash.py", line 69, in forward
+    attn_out = F.scaled_dot_product_attention(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: The expanded size of the tensor (8) must match the existing size (4096) at non-singleton dimension 1.  Target sizes: [512, 8, 128, 128].  Tensor sizes: [4096, 128, 128]

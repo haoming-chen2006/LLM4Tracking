@@ -55,7 +55,14 @@ class FlashNormformerBlock(nn.Module):
 
         if USE_FLASH:
             if mask is not None:
-                bool_mask = (mask == 0).unsqueeze(1).expand(B, self.num_heads, T, T)
+                bool_mask = (mask == 0)
+                if bool_mask.dim() == 3:
+                    bool_mask = bool_mask.squeeze(1)
+
+                # expand along the query and key dimensions for multihead
+                bool_mask = bool_mask.unsqueeze(1).unsqueeze(2).expand(
+                    B, self.num_heads, T, T
+                )
                 attn_mask = bool_mask.reshape(B * self.num_heads, T, T)
             else:
                 attn_mask = None

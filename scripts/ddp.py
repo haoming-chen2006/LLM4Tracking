@@ -7,6 +7,7 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.utils.data import DataLoader, DistributedSampler
 from torch.cuda.amp import GradScaler, autocast
+from plot.plot import plot_tensor_jet_features, reconstruct_jet_features_from_particles
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -119,9 +120,11 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
 
     if rank == 0:
         mean, std = compute_global_stats(dataset, config["batch_size"], log_pt, use_mask)
+        mean = mean.to(device)
+        std = std.to(device)
     else:
-        mean = torch.zeros(3)
-        std = torch.ones(3)
+        mean = torch.zeros(3, device=device)
+        std = torch.ones(3, device=device)
     dist.broadcast(mean, 0)
     dist.broadcast(std, 0)
     mean = mean.to(device)
@@ -198,7 +201,34 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
                 }, os.path.join(config["checkpoint_dir"], f"vqvae_epoch_{epoch+1}.pth"))
 
     cleanup()
+def ddp_eval(epochs):
+    model.eval()
+    all_orig_jets, all_recon_jets = [], []
+    dataloader_eval = load_jetclass_label_as_tensor(label="HToBB", start=15, end=18, batch_size=batch_size)
 
+    with torch.no_grad():
+        for i, (x_particles, _, _) in enumerate(dataloader_eval):
+            if i >= 300:
+                break
+
+            x_particles = x_particles.to(device).transpose(1, 2)  # [B, 128, 4]
+            x_particles_normed = (x_particles - global_mean) / global_std
+            x_recon, _ = model(x_particles_normed)
+            x_recon_denorm = x_recon * global_std + global_mean
+
+            orig_jet = reconstruct_jet_features_from_particles(x_particles)
+            recon_jet = reconstruct_jet_features_from_particles(x_recon_denorm)
+
+            all_orig_jets.append(orig_jet.to(device))
+            all_recon_jets.append(recon_jet.to(device))
+
+    all_orig_jets = torch.cat(all_orig_jets, dim=0)
+    all_recon_jets = torch.cat(all_recon_jets, dim=0)
+
+    plot_tensor_jet_features(
+    [all_orig_jets, all_recon_jets],
+    labels=("Original", "Reconstructed"),
+    filename=os.path.join(PLOT_DIR, "jet_recon_overlay_normformer_particles.png")
 
 def main() -> None:
     config = CONFIGS[TRAIN_TYPE].copy()

@@ -1,0 +1,15 @@
+{"time":"2025-06-18T00:45:03.23830404-07:00","level":"INFO","msg":"stream: starting","core version":"0.19.9","symlink path":"/pscratch/sd/h/haoming/Projects/hep_models/scripts/wandb/run-20250618_004503-cyufuovs/logs/debug-core.log"}
+{"time":"2025-06-18T00:45:03.4900147-07:00","level":"INFO","msg":"created new stream","id":"cyufuovs"}
+{"time":"2025-06-18T00:45:03.490087821-07:00","level":"INFO","msg":"stream: started","id":"cyufuovs"}
+{"time":"2025-06-18T00:45:03.4901287-07:00","level":"INFO","msg":"writer: Do: started","stream_id":"cyufuovs"}
+{"time":"2025-06-18T00:45:03.490195479-07:00","level":"INFO","msg":"handler: started","stream_id":"cyufuovs"}
+{"time":"2025-06-18T00:45:03.490148699-07:00","level":"INFO","msg":"sender: started","stream_id":"cyufuovs"}
+{"time":"2025-06-18T00:45:03.711372799-07:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2025-06-18T00:48:00.031579453-07:00","level":"INFO","msg":"stream: closing","id":"cyufuovs"}
+{"time":"2025-06-18T00:48:00.031617246-07:00","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2025-06-18T00:48:00.031721247-07:00","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2025-06-18T00:48:00.480725987-07:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2025-06-18T00:48:00.66648191-07:00","level":"INFO","msg":"handler: closed","stream_id":"cyufuovs"}
+{"time":"2025-06-18T00:48:00.666533911-07:00","level":"INFO","msg":"writer: Close: closed","stream_id":"cyufuovs"}
+{"time":"2025-06-18T00:48:00.666568177-07:00","level":"INFO","msg":"sender: closed","stream_id":"cyufuovs"}
+{"time":"2025-06-18T00:48:00.667449302-07:00","level":"INFO","msg":"stream: closed","id":"cyufuovs"}
