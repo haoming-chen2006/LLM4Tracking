@@ -9,6 +9,11 @@ from dataloader.dataloader import load_jetclass_label_as_tensor
 import vector
 import matplotlib.pyplot as plt
 
+# Directory to store plots
+PLOT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "plot", "training_plots")
+os.makedirs(PLOT_DIR, exist_ok=True)
+
 # Register awkward vector behavior
 vector.register_awkward()
 
@@ -22,4 +27,8 @@ x_jets = reconstruct_jet_features_from_particles(x_particles)
 print("x_jets shape:", x_jets.shape)  # Should be [B, 4]
 print("Original jet shape:", orig_jet.shape)  # Should be [B, 4]
 # === Plot ===
-plot_tensor_jet_features([x_jets, x_jets],labels=("Test Batch","Train batch"), filename="test_jet_features.png")
+plot_tensor_jet_features(
+    [x_jets, x_jets],
+    labels=("Test Batch", "Train batch"),
+    filename=os.path.join(PLOT_DIR, "test_jet_features.png"),
+)

@@ -10,6 +10,11 @@ from plot.plot import plot_tensor_jet_features
 from dataloader.dataloader import load_jetclass_label_as_tensor
 import vector
 
+# Directory to store plots
+PLOT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "plot", "training_plots")
+os.makedirs(PLOT_DIR, exist_ok=True)
+
 batch_size = 128
 lr = 2e-4
 start = 10
@@ -89,5 +94,5 @@ all_recon_jets = torch.cat(all_recon_jets, dim=0)
 plot_tensor_jet_features(
     [all_orig_jets, all_recon_jets],
     labels=("Original", "Reconstructed"),
-    filename="jet_recon_diagnostic.png"
+    filename=os.path.join(PLOT_DIR, "jet_recon_diagnostic.png")
 )
