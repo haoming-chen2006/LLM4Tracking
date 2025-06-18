@@ -1,0 +1,23 @@
+2025-05-27 14:50:06,710 INFO    MainThread:521708 [wandb_setup.py:_flush():67] Current SDK version is 0.19.9
+2025-05-27 14:50:06,711 INFO    MainThread:521708 [wandb_setup.py:_flush():67] Configure stats pid to 521708
+2025-05-27 14:50:06,711 INFO    MainThread:521708 [wandb_setup.py:_flush():67] Loading settings from /global/homes/h/haoming/.config/wandb/settings
+2025-05-27 14:50:06,711 INFO    MainThread:521708 [wandb_setup.py:_flush():67] Loading settings from /pscratch/sd/h/haoming/Projects/hep_models/scripts/wandb/settings
+2025-05-27 14:50:06,711 INFO    MainThread:521708 [wandb_setup.py:_flush():67] Loading settings from environment variables
+2025-05-27 14:50:06,711 INFO    MainThread:521708 [wandb_init.py:setup_run_log_directory():662] Logging user logs to /pscratch/sd/h/haoming/Projects/hep_models/scripts/wandb/run-20250527_145006-rqlpj416/logs/debug.log
+2025-05-27 14:50:06,711 INFO    MainThread:521708 [wandb_init.py:setup_run_log_directory():663] Logging internal logs to /pscratch/sd/h/haoming/Projects/hep_models/scripts/wandb/run-20250527_145006-rqlpj416/logs/debug-internal.log
+2025-05-27 14:50:06,711 INFO    MainThread:521708 [wandb_init.py:init():781] calling init triggers
+2025-05-27 14:50:06,711 INFO    MainThread:521708 [wandb_init.py:init():786] wandb.init called with sweep_config: {}
+config: {'batch_size': 512, 'num_epochs': 10, 'learning_rate': 0.0002, 'vq_kwargs': {'num_codes': 2048, 'beta': 0.25, 'affine_lr': 0.0, 'sync_nu': 2, 'replace_freq': 20, 'dim': -1}, '_wandb': {}}
+2025-05-27 14:50:06,711 INFO    MainThread:521708 [wandb_init.py:init():809] starting backend
+2025-05-27 14:50:06,711 INFO    MainThread:521708 [wandb_init.py:init():813] sending inform_init request
+2025-05-27 14:50:06,734 INFO    MainThread:521708 [backend.py:_multiprocessing_setup():101] multiprocessing start_methods=fork,spawn,forkserver, using: spawn
+2025-05-27 14:50:06,735 INFO    MainThread:521708 [wandb_init.py:init():823] backend started and connected
+2025-05-27 14:50:06,736 INFO    MainThread:521708 [wandb_init.py:init():915] updated telemetry
+2025-05-27 14:50:06,737 INFO    MainThread:521708 [wandb_init.py:init():939] communicating run to backend with 90.0 second timeout
+2025-05-27 14:50:07,277 INFO    MainThread:521708 [wandb_init.py:init():1014] starting run threads in backend
+2025-05-27 14:50:08,328 INFO    MainThread:521708 [wandb_run.py:_console_start():2454] atexit reg
+2025-05-27 14:50:08,329 INFO    MainThread:521708 [wandb_run.py:_redirect():2306] redirect: wrap_raw
+2025-05-27 14:50:08,329 INFO    MainThread:521708 [wandb_run.py:_redirect():2371] Wrapping output streams.
+2025-05-27 14:50:08,329 INFO    MainThread:521708 [wandb_run.py:_redirect():2394] Redirects installed.
+2025-05-27 14:50:08,350 INFO    MainThread:521708 [wandb_init.py:init():1056] run started, returning control to user process
+2025-05-27 15:49:59,691 INFO    MsgRouterThr:521708 [mailbox.py:close():129] [no run ID] Closing mailbox, abandoning 1 handles.

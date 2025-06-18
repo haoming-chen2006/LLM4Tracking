@@ -1,0 +1,69 @@
+Loading file 30 for label HToBB
+Loading file 31 for label HToBB
+Loading file 32 for label HToBB
+Loading file 33 for label HToBB
+Loading file 34 for label HToBB
+Loading file 35 for label HToBB
+Loading file 36 for label HToBB
+Loading file 37 for label HToBB
+Loading file 38 for label HToBB
+Loading file 39 for label HToBB
+Loading file 40 for label HToBB
+Loading file 41 for label HToBB
+Loading file 42 for label HToBB
+Loading file 43 for label HToBB
+Loading file 44 for label HToBB
+Loading file 45 for label HToBB
+Loading file 46 for label HToBB
+Loading file 47 for label HToBB
+Loading file 48 for label HToBB
+Loading file 49 for label HToBB
+Loading file 50 for label HToBB
+Loading file 51 for label HToBB
+Loading file 52 for label HToBB
+Loading file 53 for label HToBB
+Loading file 54 for label HToBB
+Loading file 55 for label HToBB
+Loading file 56 for label HToBB
+Loading file 57 for label HToBB
+Loading file 58 for label HToBB
+Loading file 59 for label HToBB
+/pscratch/sd/h/haoming/Projects/hep_models/scripts/new_train.py:50: FutureWarning: `torch.cuda.amp.GradScaler(args...)` is deprecated. Please use `torch.amp.GradScaler('cuda', args...)` instead.
+  scaler = GradScaler()
+🔁 Resuming from: checkpoints/checkpoints_vqvae_normformer_flash/vqvae_epoch_60.pth
+/pscratch/sd/h/haoming/Projects/hep_models/scripts/new_train.py:74: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with autocast():
+📈 Epoch [61/70] - Total: 0.0033 | Recon: 0.0012 | VQ: 0.0021
+📈 Epoch [62/70] - Total: 0.0033 | Recon: 0.0012 | VQ: 0.0021
+📈 Epoch [63/70] - Total: 0.0033 | Recon: 0.0012 | VQ: 0.0021
+📈 Epoch [64/70] - Total: 0.0032 | Recon: 0.0012 | VQ: 0.0021
+📈 Epoch [65/70] - Total: 0.0032 | Recon: 0.0012 | VQ: 0.0020
+📈 Epoch [66/70] - Total: 0.0031 | Recon: 0.0012 | VQ: 0.0019
+📈 Epoch [67/70] - Total: 0.0031 | Recon: 0.0012 | VQ: 0.0019
+📈 Epoch [68/70] - Total: 0.0030 | Recon: 0.0011 | VQ: 0.0019
+📈 Epoch [69/70] - Total: 0.0030 | Recon: 0.0011 | VQ: 0.0018
+📈 Epoch [70/70] - Total: 0.0029 | Recon: 0.0011 | VQ: 0.0018
+💾 Saved checkpoint: checkpoints/checkpoints_vqvae_normformer_flash/vqvae_epoch_70.pth
+Loading file 15 for label HToBB
+Loading file 16 for label HToBB
+Loading file 17 for label HToBB
+📊 Final Evaluation Stats
+Original mean: tensor([ 6.1885e+02, -6.0955e-04, -2.8014e-03,  1.2070e+02], device='cuda:0')
+Reconstructed mean: tensor([ 6.2000e+02,  5.5239e-03, -8.5823e-03,  1.2880e+02], device='cuda:0')
+Original std: tensor([107.6950,   0.8804,   1.8146,  23.5444], device='cuda:0')
+Reconstructed std: tensor([107.7647,   0.8787,   1.8054,  23.5920], device='cuda:0')
+✅ Saved plot to jet_recon_overlay_normformer_particles.png
+Traceback (most recent call last):
+  File "/pscratch/sd/h/haoming/Projects/hep_models/scripts/new_train.py", line 159, in <module>
+    vqvae.plot_model(model, x_particles, saveas="vqvae_model_normformer_particles.png")
+  File "/pscratch/sd/h/haoming/Projects/hep_models/models/NormFormer_Flash.py", line 310, in plot_model
+    ax.hist(idx, bins=bins)
+  File "/global/common/software/nersc/pe/conda-envs/24.1.0/python-3.11/nersc-python/lib/python3.11/site-packages/matplotlib/__init__.py", line 1465, in inner
+    return func(ax, *map(sanitize_sequence, args), **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/common/software/nersc/pe/conda-envs/24.1.0/python-3.11/nersc-python/lib/python3.11/site-packages/matplotlib/axes/_axes.py", line 6772, in hist
+    x = cbook._reshape_2D(x, 'x')
+        ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/common/software/nersc/pe/conda-envs/24.1.0/python-3.11/nersc-python/lib/python3.11/site-packages/matplotlib/cbook.py", line 1412, in _reshape_2D
+    raise ValueError(f'{name} must have 2 or fewer dimensions')
+ValueError: x must have 2 or fewer dimensions

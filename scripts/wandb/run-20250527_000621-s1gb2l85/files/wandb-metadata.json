@@ -1,0 +1,108 @@
+{
+  "os": "Linux-5.14.21-150500.55.97_13.0.78-cray_shasta_c-x86_64-with-glibc2.31",
+  "python": "CPython 3.11.7",
+  "startedAt": "2025-05-27T07:06:21.722127Z",
+  "program": "/pscratch/sd/h/haoming/Projects/hep_models/scripts/new_train.py",
+  "codePath": "new_train.py",
+  "email": "haoming_chen@berkeley.edu",
+  "root": "/pscratch/sd/h/haoming/Projects/hep_models/scripts",
+  "host": "nid001065",
+  "executable": "/global/common/software/nersc/pe/conda-envs/24.1.0/python-3.11/nersc-python/bin/python",
+  "codePathLocal": "new_train.py",
+  "cpu_count": 64,
+  "cpu_count_logical": 128,
+  "gpu": "NVIDIA A100-SXM4-40GB",
+  "gpu_count": 4,
+  "disk": {
+    "/": {
+      "total": "134860550144",
+      "used": "568999936"
+    }
+  },
+  "memory": {
+    "total": "269721100288"
+  },
+  "cpu": {
+    "count": 64,
+    "countLogical": 128
+  },
+  "gpu_nvidia": [
+    {
+      "name": "NVIDIA A100-SXM4-40GB",
+      "memoryTotal": "42949672960",
+      "cudaCores": 6912,
+      "architecture": "Ampere"
+    },
+    {
+      "name": "NVIDIA A100-SXM4-40GB",
+      "memoryTotal": "42949672960",
+      "cudaCores": 6912,
+      "architecture": "Ampere"
+    },
+    {
+      "name": "NVIDIA A100-SXM4-40GB",
+      "memoryTotal": "42949672960",
+      "cudaCores": 6912,
+      "architecture": "Ampere"
+    },
+    {
+      "name": "NVIDIA A100-SXM4-40GB",
+      "memoryTotal": "42949672960",
+      "cudaCores": 6912,
+      "architecture": "Ampere"
+    }
+  ],
+  "slurm": {
+    "cluster_name": "perlmutter",
+    "cpus_on_node": "128",
+    "gpus": "4",
+    "gpus_on_node": "4",
+    "gtids": "0",
+    "job_account": "m3443_g",
+    "job_cpus_per_node": "128",
+    "job_end_time": "1748341177",
+    "job_gid": "108997",
+    "job_gpus": "0,1,2,3",
+    "job_id": "39022783",
+    "job_licenses": "u2:1",
+    "job_name": "interactive",
+    "job_nodelist": "nid001065",
+    "job_num_nodes": "1",
+    "job_partition": "urgent_gpu_ss11",
+    "job_qos": "gpu_interactive",
+    "job_start_time": "1748326777",
+    "job_uid": "108997",
+    "job_user": "haoming",
+    "jobid": "39022783",
+    "launch_node_ipaddr": "128.55.64.13",
+    "localid": "0",
+    "mpi_type": "cray_shasta",
+    "nnodes": "1",
+    "nodeid": "0",
+    "nodelist": "nid001065",
+    "oom_kill_step": "0",
+    "prio_process": "0",
+    "procid": "0",
+    "pty_port": "35767",
+    "pty_win_col": "80",
+    "pty_win_row": "24",
+    "script_context": "prolog_task",
+    "srun_comm_host": "128.55.64.13",
+    "srun_comm_port": "34711",
+    "step_id": "4294967290",
+    "step_launcher_port": "34711",
+    "step_nodelist": "nid001065",
+    "step_num_nodes": "1",
+    "step_num_tasks": "1",
+    "step_tasks_per_node": "1",
+    "stepid": "4294967290",
+    "stepmgr": "nid001065",
+    "submit_dir": "/global/u2/h/haoming",
+    "submit_host": "login04",
+    "task_pid": "527314",
+    "tasks_per_node": "128",
+    "topology_addr": "nid001065",
+    "topology_addr_pattern": "node"
+  },
+  "cudaVersion": "12.4"
+}

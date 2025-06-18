@@ -1,0 +1,15 @@
+{"time":"2025-05-27T10:58:41.071086769-07:00","level":"INFO","msg":"stream: starting","core version":"0.19.9","symlink path":"/pscratch/sd/h/haoming/Projects/hep_models/scripts/wandb/run-20250527_105841-qeql4sbv/logs/debug-core.log"}
+{"time":"2025-05-27T10:58:41.421089854-07:00","level":"INFO","msg":"created new stream","id":"qeql4sbv"}
+{"time":"2025-05-27T10:58:41.421158176-07:00","level":"INFO","msg":"stream: started","id":"qeql4sbv"}
+{"time":"2025-05-27T10:58:41.421187753-07:00","level":"INFO","msg":"writer: Do: started","stream_id":"qeql4sbv"}
+{"time":"2025-05-27T10:58:41.421214775-07:00","level":"INFO","msg":"handler: started","stream_id":"qeql4sbv"}
+{"time":"2025-05-27T10:58:41.421221548-07:00","level":"INFO","msg":"sender: started","stream_id":"qeql4sbv"}
+{"time":"2025-05-27T10:58:41.66957882-07:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2025-05-27T11:47:22.10684019-07:00","level":"INFO","msg":"stream: closing","id":"qeql4sbv"}
+{"time":"2025-05-27T11:47:22.106885728-07:00","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2025-05-27T11:47:22.10779688-07:00","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2025-05-27T11:47:22.504313433-07:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2025-05-27T11:47:22.667783249-07:00","level":"INFO","msg":"handler: closed","stream_id":"qeql4sbv"}
+{"time":"2025-05-27T11:47:22.667843415-07:00","level":"INFO","msg":"writer: Close: closed","stream_id":"qeql4sbv"}
+{"time":"2025-05-27T11:47:22.667852953-07:00","level":"INFO","msg":"sender: closed","stream_id":"qeql4sbv"}
+{"time":"2025-05-27T11:47:22.668336047-07:00","level":"INFO","msg":"stream: closed","id":"qeql4sbv"}

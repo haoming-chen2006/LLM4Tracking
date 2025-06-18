@@ -1,0 +1,83 @@
+Loading file 55 for label HToBB
+Loading file 56 for label HToBB
+Loading file 57 for label HToBB
+Loading file 58 for label HToBB
+Loading file 59 for label HToBB
+/pscratch/sd/h/haoming/Projects/hep_models/scripts/new_train.py:50: FutureWarning: `torch.cuda.amp.GradScaler(args...)` is deprecated. Please use `torch.amp.GradScaler('cuda', args...)` instead.
+  scaler = GradScaler()
+/pscratch/sd/h/haoming/Projects/hep_models/scripts/new_train.py:74: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with autocast():
+📈 Epoch [1/50] - Total: 0.0581 | Recon: 0.0338 | VQ: 0.0243
+📈 Epoch [2/50] - Total: 0.0182 | Recon: 0.0085 | VQ: 0.0097
+📈 Epoch [3/50] - Total: 0.0153 | Recon: 0.0071 | VQ: 0.0082
+📈 Epoch [4/50] - Total: 0.0128 | Recon: 0.0058 | VQ: 0.0070
+📈 Epoch [5/50] - Total: 0.0121 | Recon: 0.0052 | VQ: 0.0068
+📈 Epoch [6/50] - Total: 0.0117 | Recon: 0.0048 | VQ: 0.0069
+📈 Epoch [7/50] - Total: 0.0112 | Recon: 0.0044 | VQ: 0.0068
+📈 Epoch [8/50] - Total: 0.0109 | Recon: 0.0040 | VQ: 0.0068
+📈 Epoch [9/50] - Total: 0.0107 | Recon: 0.0038 | VQ: 0.0069
+📈 Epoch [10/50] - Total: 0.0106 | Recon: 0.0037 | VQ: 0.0069
+📈 Epoch [11/50] - Total: 0.0101 | Recon: 0.0035 | VQ: 0.0066
+📈 Epoch [12/50] - Total: 0.0101 | Recon: 0.0033 | VQ: 0.0067
+📈 Epoch [13/50] - Total: 0.0101 | Recon: 0.0032 | VQ: 0.0068
+📈 Epoch [14/50] - Total: 0.0101 | Recon: 0.0031 | VQ: 0.0070
+📈 Epoch [15/50] - Total: 0.0102 | Recon: 0.0031 | VQ: 0.0071
+📈 Epoch [16/50] - Total: 0.0099 | Recon: 0.0030 | VQ: 0.0069
+📈 Epoch [17/50] - Total: 0.0097 | Recon: 0.0029 | VQ: 0.0068
+📈 Epoch [18/50] - Total: 0.0095 | Recon: 0.0028 | VQ: 0.0067
+📈 Epoch [19/50] - Total: 0.0092 | Recon: 0.0027 | VQ: 0.0065
+📈 Epoch [20/50] - Total: 0.0091 | Recon: 0.0027 | VQ: 0.0064
+📈 Epoch [21/50] - Total: 0.0090 | Recon: 0.0026 | VQ: 0.0064
+📈 Epoch [22/50] - Total: 0.0089 | Recon: 0.0026 | VQ: 0.0063
+📈 Epoch [23/50] - Total: 0.0088 | Recon: 0.0025 | VQ: 0.0063
+📈 Epoch [24/50] - Total: 0.0087 | Recon: 0.0025 | VQ: 0.0062
+📈 Epoch [25/50] - Total: 0.0086 | Recon: 0.0024 | VQ: 0.0062
+📈 Epoch [26/50] - Total: 0.0084 | Recon: 0.0024 | VQ: 0.0060
+📈 Epoch [27/50] - Total: 0.0084 | Recon: 0.0024 | VQ: 0.0060
+📈 Epoch [28/50] - Total: 0.0083 | Recon: 0.0023 | VQ: 0.0059
+📈 Epoch [29/50] - Total: 0.0082 | Recon: 0.0023 | VQ: 0.0059
+📈 Epoch [30/50] - Total: 0.0081 | Recon: 0.0023 | VQ: 0.0059
+📈 Epoch [31/50] - Total: 0.0081 | Recon: 0.0023 | VQ: 0.0059
+📈 Epoch [32/50] - Total: 0.0080 | Recon: 0.0022 | VQ: 0.0057
+📈 Epoch [33/50] - Total: 0.0080 | Recon: 0.0022 | VQ: 0.0058
+📈 Epoch [34/50] - Total: 0.0080 | Recon: 0.0022 | VQ: 0.0058
+📈 Epoch [35/50] - Total: 0.0079 | Recon: 0.0022 | VQ: 0.0057
+📈 Epoch [36/50] - Total: 0.0079 | Recon: 0.0022 | VQ: 0.0057
+📈 Epoch [37/50] - Total: 0.0079 | Recon: 0.0022 | VQ: 0.0057
+📈 Epoch [38/50] - Total: 0.0078 | Recon: 0.0021 | VQ: 0.0057
+📈 Epoch [39/50] - Total: 0.0077 | Recon: 0.0021 | VQ: 0.0056
+📈 Epoch [40/50] - Total: 0.0077 | Recon: 0.0021 | VQ: 0.0056
+📈 Epoch [41/50] - Total: 0.0076 | Recon: 0.0021 | VQ: 0.0055
+📈 Epoch [42/50] - Total: 0.0075 | Recon: 0.0021 | VQ: 0.0055
+📈 Epoch [43/50] - Total: 0.0076 | Recon: 0.0021 | VQ: 0.0055
+📈 Epoch [44/50] - Total: 0.0074 | Recon: 0.0020 | VQ: 0.0054
+📈 Epoch [45/50] - Total: 0.0073 | Recon: 0.0020 | VQ: 0.0053
+📈 Epoch [46/50] - Total: 0.0074 | Recon: 0.0020 | VQ: 0.0054
+📈 Epoch [47/50] - Total: 0.0070 | Recon: 0.0019 | VQ: 0.0050
+📈 Epoch [48/50] - Total: 0.0068 | Recon: 0.0019 | VQ: 0.0049
+📈 Epoch [49/50] - Total: 0.0069 | Recon: 0.0019 | VQ: 0.0050
+📈 Epoch [50/50] - Total: 0.0067 | Recon: 0.0018 | VQ: 0.0049
+💾 Saved checkpoint: checkpoints/checkpoints_vqvae_normformer_flash/vqvae_epoch_50.pth
+Loading file 15 for label HToBB
+Loading file 16 for label HToBB
+Loading file 17 for label HToBB
+📊 Final Evaluation Stats
+Original mean: tensor([ 6.1885e+02, -8.6272e-04,  4.2733e-03,  1.2068e+02], device='cuda:0')
+Reconstructed mean: tensor([ 6.2307e+02, -3.2506e-03,  1.9618e-02,  1.2081e+02], device='cuda:0')
+Original std: tensor([107.6649,   0.8789,   1.8153,  23.6122], device='cuda:0')
+Reconstructed std: tensor([106.7576,   0.8778,   1.8205,  26.0173], device='cuda:0')
+✅ Saved plot to jet_recon_overlay_normformer_particles.png
+Traceback (most recent call last):
+  File "/pscratch/sd/h/haoming/Projects/hep_models/scripts/new_train.py", line 159, in <module>
+    vqvae.plot_model(model, x_particles, saveas="vqvae_model_normformer_particles.png")
+  File "/pscratch/sd/h/haoming/Projects/hep_models/models/NormFormer_Flash.py", line 310, in plot_model
+    ax.hist(idx, bins=bins)
+  File "/global/common/software/nersc/pe/conda-envs/24.1.0/python-3.11/nersc-python/lib/python3.11/site-packages/matplotlib/__init__.py", line 1465, in inner
+    return func(ax, *map(sanitize_sequence, args), **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/common/software/nersc/pe/conda-envs/24.1.0/python-3.11/nersc-python/lib/python3.11/site-packages/matplotlib/axes/_axes.py", line 6772, in hist
+    x = cbook._reshape_2D(x, 'x')
+        ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/common/software/nersc/pe/conda-envs/24.1.0/python-3.11/nersc-python/lib/python3.11/site-packages/matplotlib/cbook.py", line 1412, in _reshape_2D
+    raise ValueError(f'{name} must have 2 or fewer dimensions')
+ValueError: x must have 2 or fewer dimensions

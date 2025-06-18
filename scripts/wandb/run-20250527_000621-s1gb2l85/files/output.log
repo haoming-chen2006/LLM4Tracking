@@ -1,0 +1,56 @@
+Loading file 25 for label HToBB
+Loading file 26 for label HToBB
+Loading file 27 for label HToBB
+Loading file 28 for label HToBB
+Loading file 29 for label HToBB
+Loading file 30 for label HToBB
+Loading file 31 for label HToBB
+Loading file 32 for label HToBB
+Loading file 33 for label HToBB
+Loading file 34 for label HToBB
+/pscratch/sd/h/haoming/Projects/hep_models/scripts/new_train.py:60: FutureWarning: `torch.cuda.amp.GradScaler(args...)` is deprecated. Please use `torch.amp.GradScaler('cuda', args...)` instead.
+  scaler = GradScaler()
+🔁 Resuming from: checkpoints/checkpoints_vqvae_normformer_flash/vqvae_epoch_10.pth
+/pscratch/sd/h/haoming/Projects/hep_models/scripts/new_train.py:85: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with autocast():
+📈 Epoch [11/30] - Total: 0.0054 | Recon: 0.0025 | VQ: 0.0029
+🧩 Unique codes used: 1217
+📈 Epoch [12/30] - Total: 0.0051 | Recon: 0.0023 | VQ: 0.0028
+🧩 Unique codes used: 1223
+📈 Epoch [13/30] - Total: 0.0049 | Recon: 0.0021 | VQ: 0.0028
+🧩 Unique codes used: 1221
+📈 Epoch [14/30] - Total: 0.0048 | Recon: 0.0020 | VQ: 0.0028
+🧩 Unique codes used: 1173
+📈 Epoch [15/30] - Total: 0.0048 | Recon: 0.0019 | VQ: 0.0029
+🧩 Unique codes used: 1277
+📈 Epoch [16/30] - Total: 0.0047 | Recon: 0.0019 | VQ: 0.0028
+🧩 Unique codes used: 1196
+📈 Epoch [17/30] - Total: 0.0046 | Recon: 0.0018 | VQ: 0.0028
+🧩 Unique codes used: 1252
+📈 Epoch [18/30] - Total: 0.0045 | Recon: 0.0018 | VQ: 0.0027
+🧩 Unique codes used: 1201
+📈 Epoch [19/30] - Total: 0.0044 | Recon: 0.0017 | VQ: 0.0027
+🧩 Unique codes used: 1223
+📈 Epoch [20/30] - Total: 0.0043 | Recon: 0.0016 | VQ: 0.0026
+🧩 Unique codes used: 1262
+📈 Epoch [21/30] - Total: 0.0042 | Recon: 0.0016 | VQ: 0.0026
+🧩 Unique codes used: 1246
+📈 Epoch [22/30] - Total: 0.0041 | Recon: 0.0015 | VQ: 0.0026
+🧩 Unique codes used: 1261
+📈 Epoch [23/30] - Total: 0.0040 | Recon: 0.0015 | VQ: 0.0025
+🧩 Unique codes used: 1347
+📈 Epoch [24/30] - Total: 0.0040 | Recon: 0.0015 | VQ: 0.0025
+🧩 Unique codes used: 1206
+📈 Epoch [25/30] - Total: 0.0039 | Recon: 0.0014 | VQ: 0.0025
+🧩 Unique codes used: 1285
+📈 Epoch [26/30] - Total: 0.0039 | Recon: 0.0014 | VQ: 0.0025
+🧩 Unique codes used: 1236
+📈 Epoch [27/30] - Total: 0.0039 | Recon: 0.0014 | VQ: 0.0025
+🧩 Unique codes used: 1281
+📈 Epoch [28/30] - Total: 0.0039 | Recon: 0.0014 | VQ: 0.0025
+🧩 Unique codes used: 1322
+📈 Epoch [29/30] - Total: 0.0039 | Recon: 0.0013 | VQ: 0.0025
+🧩 Unique codes used: 1257
+📈 Epoch [30/30] - Total: 0.0039 | Recon: 0.0013 | VQ: 0.0025
+🧩 Unique codes used: 1230
+📂 Saved checkpoint: checkpoints/checkpoints_vqvae_normformer_flash/vqvae_epoch_30.pth

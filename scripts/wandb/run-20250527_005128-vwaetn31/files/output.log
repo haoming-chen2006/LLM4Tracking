@@ -1,0 +1,51 @@
+Loading file 55 for label HToBB
+Loading file 56 for label HToBB
+Loading file 57 for label HToBB
+Loading file 58 for label HToBB
+Loading file 59 for label HToBB
+/pscratch/sd/h/haoming/Projects/hep_models/scripts/new_train.py:60: FutureWarning: `torch.cuda.amp.GradScaler(args...)` is deprecated. Please use `torch.amp.GradScaler('cuda', args...)` instead.
+  scaler = GradScaler()
+🔁 Resuming from: checkpoints/checkpoints_vqvae_normformer_flash/vqvae_epoch_30.pth
+/pscratch/sd/h/haoming/Projects/hep_models/scripts/new_train.py:85: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with autocast():
+📈 Epoch [31/50] - Total: 0.0038 | Recon: 0.0013 | VQ: 0.0025
+🧩 Unique codes used: 1911
+📈 Epoch [32/50] - Total: 0.0038 | Recon: 0.0013 | VQ: 0.0025
+🧩 Unique codes used: 1919
+📈 Epoch [33/50] - Total: 0.0038 | Recon: 0.0013 | VQ: 0.0025
+🧩 Unique codes used: 1921
+📈 Epoch [34/50] - Total: 0.0038 | Recon: 0.0013 | VQ: 0.0025
+🧩 Unique codes used: 1881
+📈 Epoch [35/50] - Total: 0.0038 | Recon: 0.0013 | VQ: 0.0025
+🧩 Unique codes used: 1916
+📈 Epoch [36/50] - Total: 0.0038 | Recon: 0.0013 | VQ: 0.0025
+🧩 Unique codes used: 1927
+📈 Epoch [37/50] - Total: 0.0038 | Recon: 0.0013 | VQ: 0.0025
+🧩 Unique codes used: 1904
+📈 Epoch [38/50] - Total: 0.0038 | Recon: 0.0012 | VQ: 0.0025
+🧩 Unique codes used: 1920
+📈 Epoch [39/50] - Total: 0.0037 | Recon: 0.0012 | VQ: 0.0025
+🧩 Unique codes used: 1930
+📈 Epoch [40/50] - Total: 0.0037 | Recon: 0.0012 | VQ: 0.0025
+🧩 Unique codes used: 1920
+📈 Epoch [41/50] - Total: 0.0037 | Recon: 0.0012 | VQ: 0.0025
+🧩 Unique codes used: 1921
+📈 Epoch [42/50] - Total: 0.0037 | Recon: 0.0012 | VQ: 0.0025
+🧩 Unique codes used: 1916
+📈 Epoch [43/50] - Total: 0.0037 | Recon: 0.0012 | VQ: 0.0025
+🧩 Unique codes used: 1934
+📈 Epoch [44/50] - Total: 0.0037 | Recon: 0.0012 | VQ: 0.0025
+🧩 Unique codes used: 1931
+📈 Epoch [45/50] - Total: 0.0037 | Recon: 0.0012 | VQ: 0.0025
+🧩 Unique codes used: 1966
+📈 Epoch [46/50] - Total: 0.0037 | Recon: 0.0012 | VQ: 0.0025
+🧩 Unique codes used: 1957
+📈 Epoch [47/50] - Total: 0.0037 | Recon: 0.0012 | VQ: 0.0025
+🧩 Unique codes used: 1943
+📈 Epoch [48/50] - Total: 0.0037 | Recon: 0.0012 | VQ: 0.0025
+🧩 Unique codes used: 1947
+📈 Epoch [49/50] - Total: 0.0037 | Recon: 0.0012 | VQ: 0.0025
+🧩 Unique codes used: 1926
+📈 Epoch [50/50] - Total: 0.0037 | Recon: 0.0012 | VQ: 0.0025
+🧩 Unique codes used: 1919
+📂 Saved checkpoint: checkpoints/checkpoints_vqvae_normformer_flash/vqvae_epoch_50.pth
