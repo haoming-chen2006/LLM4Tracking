@@ -175,3 +175,26 @@ def reconstruct_jet_features_from_particles(x_particles: torch.Tensor) -> torch.
     return jets_tensor  # shape: [B, 4]
 
 
+def plot_difference(orig_jets: torch.Tensor, recon_jets: torch.Tensor,
+                    filename: str = "jet_feature_difference.png") -> None:
+    """Plot distributions of differences between reconstructed and original jets."""
+    if orig_jets.shape != recon_jets.shape:
+        raise ValueError("Input tensors must have the same shape")
+
+    diff = (recon_jets - orig_jets).cpu().numpy()
+    features = ["pt", "eta", "phi", "mass"]
+
+    fig, axes = plt.subplots(1, 4, figsize=(18, 4))
+    for i, feat in enumerate(features):
+        values = diff[:, i]
+        rng = (values.min(), values.max())
+        axes[i].hist(values, bins=50, histtype="step", density=True, range=rng)
+        axes[i].set_xlabel(f"$\\Delta$ {DEFAULT_LABELS.get('jet_' + feat, feat)}")
+        axes[i].grid(True)
+
+    fig.suptitle("Reconstructed - Original Jet Feature Differences", fontsize=16)
+    fig.tight_layout()
+    plt.savefig(filename, dpi=300)
+    print(f"✅ Saved plot to {filename}")
+
+
