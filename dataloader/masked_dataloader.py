@@ -5,32 +5,34 @@ from torch.utils.data import TensorDataset, DataLoader
 import awkward as ak
 import uproot
 import vector
+
 vector.register_awkward()
 
-def _pad_with_mask(a, maxlen, value=0, dtype='float32'):
-    if isinstance(a, ak.Array):
+def _pad_with_mask(a, maxlen, value=0, dtype="float32"):
+    """Pad variable length arrays and return a mask indicating valid entries."""
+    if isinstance(a, np.ndarray) and a.ndim >= 2 and a.shape[1] == maxlen:
+        mask = np.ones((a.shape[0], maxlen), dtype="float32")
+        return a, mask
+    elif isinstance(a, ak.Array):
+        if a.ndim == 1:
+            a = ak.unflatten(a, 1)
         lengths = ak.num(a, axis=1)
-        padded = ak.pad_none(a, maxlen, clip=True)
+        padded = ak.fill_none(ak.pad_none(a, maxlen, clip=True), value)
         mask = ak.local_index(padded) < lengths[:, np.newaxis]
-
-        filled = ak.fill_none(padded, value)
-        final = ak.to_numpy(ak.values_astype(filled, dtype))
-        mask_np = ak.to_numpy(mask).astype('float32')
-
-        print(f"Padded array shape: {final.shape}")
-        print(f"Mask shape: {mask_np.shape}")
-        return final, mask_np
-
+        return (
+            ak.to_numpy(ak.values_astype(padded, dtype)),
+            ak.to_numpy(mask).astype("float32"),
+        )
     else:
         batch_size = len(a)
-        x = np.full((batch_size, maxlen) + np.shape(a[0][0]), value, dtype=dtype)
-        mask = np.zeros((batch_size, maxlen), dtype='float32')
-
-        for idx, jet in enumerate(a):
-            n = min(len(jet), maxlen)
-            x[idx, :n] = jet[:n]
-            mask[idx, :n] = 1.0
-
+        x = (np.ones((batch_size, maxlen)) * value).astype(dtype)
+        mask = np.zeros((batch_size, maxlen), dtype="float32")
+        for idx, seq in enumerate(a):
+            if not len(seq):
+                continue
+            trunc = seq[:maxlen].astype(dtype)
+            x[idx, : len(trunc)] = trunc
+            mask[idx, : len(trunc)] = 1.0
         return x, mask
 
 def read_file(
@@ -138,7 +140,4 @@ def load_jetclass_label_as_dataset(label="HToBB", start=10, end=15):
     dataset = TensorDataset(x_particles_tensor, x_jet_tensor, y_tensor, mask_tensor)
     return dataset
 
-# Test loading one batch
-dataloader = load_jetclass_label_as_tensor(label="HToBB", start=10, end=11, batch_size=512)
-x_particles, x_jets, y, mask = next(iter(dataloader))
 
