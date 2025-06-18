@@ -11,6 +11,11 @@ from dataloader.dataloader import load_jetclass_label_as_tensor
 import vector
 import wandb
 
+# Directory to store plots
+PLOT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "plot", "training_plots")
+os.makedirs(PLOT_DIR, exist_ok=True)
+
 # === W&B Init ===
 wandb.init(project="vqvae-normformer-flash_new", config={
     "batch_size": 512,
@@ -29,7 +34,7 @@ dataloader = load_jetclass_label_as_tensor(label="HToBB", start=70, end=80, batc
 
 # === Model ===
 model = vqvae.VQVAENormFormer(
-    input_dim=3,s
+    input_dim=3,
     latent_dim=128,
     hidden_dim=256,
     num_heads=8,
@@ -150,11 +155,15 @@ print("Reconstructed std:", all_recon_jets.std(dim=0))
 plot_tensor_jet_features(
     [all_orig_jets, all_recon_jets],
     labels=("Original", "Reconstructed"),
-    filename="jet_recon_overlay_normformer_particles.png"
+    filename=os.path.join(PLOT_DIR, "jet_recon_overlay_normformer_particles.png")
 )
 
 # Plot model structure
 x_particles, _, _ = next(iter(dataloader_eval))
 x_particles = x_particles.to(device).transpose(1, 2)
-vqvae.plot_model(model, x_particles, saveas="vqvae_model_normformer_particles.png")
+vqvae.plot_model(
+    model,
+    x_particles,
+    saveas=os.path.join(PLOT_DIR, "vqvae_model_normformer_particles.png")
+)
 
