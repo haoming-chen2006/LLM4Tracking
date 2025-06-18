@@ -7,7 +7,15 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.utils.data import DataLoader, DistributedSampler
 from torch.cuda.amp import GradScaler, autocast
-from plot.plot import plot_tensor_jet_features, reconstruct_jet_features_from_particles
+from plot.plot import (
+    plot_tensor_jet_features,
+    reconstruct_jet_features_from_particles,
+    plot_difference,
+)
+
+PLOT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "plot", "training_plots")
+os.makedirs(PLOT_DIR, exist_ok=True)
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -194,46 +202,118 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
             print(f"Epoch {epoch+1}/{config['num_epochs']} - Total: {epoch_loss.item():.4f} | "
                   f"Recon: {recon_loss.item():.4f} | VQ: {vq_loss.item():.4f}")
             if epoch + 1 == config["num_epochs"]:
-                torch.save({
-                    "epoch": epoch + 1,
-                    "model_state": model.module.state_dict(),
-                    "optimizer_state": optimizer.state_dict(),
-                }, os.path.join(config["checkpoint_dir"], f"vqvae_epoch_{epoch+1}.pth"))
+                torch.save(
+                    {
+                        "epoch": epoch + 1,
+                        "model_state": model.module.state_dict(),
+                        "optimizer_state": optimizer.state_dict(),
+                    },
+                    os.path.join(config["checkpoint_dir"], f"vqvae_epoch_{epoch+1}.pth"),
+                )
 
     cleanup()
-def ddp_eval(epochs):
+
+
+def ddp_eval(config: dict) -> None:
+    """Run evaluation on a single device after training."""
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+    if config["type"] == "masked":
+        from dataloader.masked_dataloader import (
+            load_jetclass_label_as_dataset,
+            load_jetclass_label_as_tensor,
+        )
+        use_mask = True
+        log_pt = True
+        model_module = __import__("models.NormFormer_Flash", fromlist=["VQVAENormFormer"])
+    elif config["type"] == "new":
+        from dataloader.dataloader import (
+            load_jetclass_label_as_dataset,
+            load_jetclass_label_as_tensor,
+        )
+        use_mask = False
+        log_pt = False
+        model_module = __import__("models.NormFormer_Flash", fromlist=["VQVAENormFormer"])
+    else:
+        from dataloader.dataloader import (
+            load_jetclass_label_as_dataset,
+            load_jetclass_label_as_tensor,
+        )
+        use_mask = False
+        log_pt = False
+        model_module = __import__("models.NormFormer", fromlist=["VQVAENormFormer"])
+
+    dataset = load_jetclass_label_as_dataset(label="HToBB", start=config["start"], end=config["end"])
+    mean, std = compute_global_stats(dataset, config["batch_size"], log_pt, use_mask)
+    mean = mean.to(device)
+    std = std.to(device)
+
+    model = model_module.VQVAENormFormer(
+        input_dim=3,
+        latent_dim=128,
+        hidden_dim=256,
+        num_heads=8,
+        num_blocks=3,
+        vq_kwargs=config["vq_kwargs"],
+    ).to(device)
+
+    ckpts = [f for f in os.listdir(config["checkpoint_dir"]) if f.startswith("vqvae_epoch_") and f.endswith(".pth")]
+    if ckpts:
+        latest = max(ckpts, key=lambda x: int(x.split("_")[-1].split(".")[0]))
+        checkpoint = torch.load(os.path.join(config["checkpoint_dir"], latest), map_location=device)
+        model.load_state_dict(checkpoint["model_state"])
+
     model.eval()
+    dataloader_eval = load_jetclass_label_as_tensor(label="HToBB", start=15, end=18, batch_size=config["batch_size"])
     all_orig_jets, all_recon_jets = [], []
-    dataloader_eval = load_jetclass_label_as_tensor(label="HToBB", start=15, end=18, batch_size=batch_size)
 
     with torch.no_grad():
-        for i, (x_particles, _, _) in enumerate(dataloader_eval):
+        for i, batch in enumerate(dataloader_eval):
             if i >= 300:
                 break
 
-            x_particles = x_particles.to(device).transpose(1, 2)  # [B, 128, 4]
-            x_particles_normed = (x_particles - global_mean) / global_std
-            x_recon, _ = model(x_particles_normed)
-            x_recon_denorm = x_recon * global_std + global_mean
+            if use_mask:
+                x_particles, _, _, mask = [b.to(device) for b in batch]
+            else:
+                x_particles, _, _ = [b.to(device) for b in batch]
+                mask = None
 
+            x_particles = x_particles.transpose(1, 2)
+            if log_pt:
+                x_particles[:, :, 0] = torch.log(x_particles[:, :, 0] + 1e-6)
+            x_norm = (x_particles - mean) / std
+
+            if mask is not None:
+                out, _ = model(x_norm, mask=mask)
+            else:
+                out, _ = model(x_norm)
+
+            out_denorm = out * std + mean
             orig_jet = reconstruct_jet_features_from_particles(x_particles)
-            recon_jet = reconstruct_jet_features_from_particles(x_recon_denorm)
-
-            all_orig_jets.append(orig_jet.to(device))
-            all_recon_jets.append(recon_jet.to(device))
+            recon_jet = reconstruct_jet_features_from_particles(out_denorm)
+            all_orig_jets.append(orig_jet)
+            all_recon_jets.append(recon_jet)
 
     all_orig_jets = torch.cat(all_orig_jets, dim=0)
     all_recon_jets = torch.cat(all_recon_jets, dim=0)
 
     plot_tensor_jet_features(
-    [all_orig_jets, all_recon_jets],
-    labels=("Original", "Reconstructed"),
-    filename=os.path.join(PLOT_DIR, "jet_recon_overlay_normformer_particles.png")
+        [all_orig_jets, all_recon_jets],
+        labels=("Original", "Reconstructed"),
+        filename=os.path.join(PLOT_DIR, "jet_recon_overlay_ddp.png"),
+    )
+    plot_difference(
+        all_orig_jets,
+        all_recon_jets,
+        filename=os.path.join(PLOT_DIR, "jet_feature_difference_ddp.png"),
+    )
+
 
 def main() -> None:
     config = CONFIGS[TRAIN_TYPE].copy()
     config["type"] = TRAIN_TYPE
     mp.spawn(ddp_train, args=(WORLD_SIZE, config), nprocs=WORLD_SIZE, join=True)
+    ddp_eval(config)
 
 
 if __name__ == "__main__":
