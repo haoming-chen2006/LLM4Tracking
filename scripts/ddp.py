@@ -7,18 +7,18 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.utils.data import DataLoader, DistributedSampler
 from torch.cuda.amp import GradScaler, autocast
-from plot.plot import (
-    plot_tensor_jet_features,
-    reconstruct_jet_features_from_particles,
-    plot_difference,
-)
+
 
 PLOT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                         "plot", "training_plots")
 os.makedirs(PLOT_DIR, exist_ok=True)
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
+from plot.plot import (
+    plot_tensor_jet_features,
+    reconstruct_jet_features_from_particles,
+    plot_difference,
+)
 # -----------------------------------------------------------------------------
 # Configuration: choose which training script to mimic
 # Options: "new", "masked", "particle"
@@ -28,7 +28,7 @@ WORLD_SIZE = 4
 CONFIGS = {
     "new": {
         "batch_size": 512,
-        "num_epochs": 10,
+        "num_epochs": 1,
         "learning_rate": 2e-4,
         "start": 70,
         "end": 80,

@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.cuda.amp import GradScaler, autocast
 import models.NormFormer as vqvae
-from plot.plot import plot_tensor_jet_features, reconstruct_jet_features_from_particles
+from plot.plot import plot_tensor_jet_features, reconstruct_jet_features_from_particles, plot_difference
 from dataloader.dataloader import load_jetclass_label_as_tensor
 import vector
 
@@ -148,8 +148,9 @@ plot_tensor_jet_features(
 x_particles,x_jets,_ = next(iter(dataloader_eval))
 x_particles = x_particles.to(device)
 x_particles = x_particles.transpose(1, 2)  # [B, 4, 128]
-vqvae.plot_model(
-    model,
-    x_particles,
-    saveas=os.path.join(PLOT_DIR, "vqvae_model_normformer_particles.png")
+
+plot_difference(
+        all_orig_jets,
+        all_recon_jets,
+        filename=os.path.join(PLOT_DIR, "old_jet_feature_difference_ddp.png"),
 )

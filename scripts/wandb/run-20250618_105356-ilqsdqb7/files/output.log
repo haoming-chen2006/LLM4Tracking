@@ -1,0 +1,40 @@
+Loading file 70 for label HToBB
+Loading file 71 for label HToBB
+Loading file 72 for label HToBB
+Loading file 73 for label HToBB
+Loading file 74 for label HToBB
+Loading file 75 for label HToBB
+Loading file 76 for label HToBB
+Loading file 77 for label HToBB
+Loading file 78 for label HToBB
+Loading file 79 for label HToBB
+/pscratch/sd/h/haoming/Projects/hep_models/scripts/new_train.py:55: FutureWarning: `torch.cuda.amp.GradScaler(args...)` is deprecated. Please use `torch.amp.GradScaler('cuda', args...)` instead.
+  scaler = GradScaler()
+🔁 Resuming from: checkpoints/checkpoints_vqvae_normformer_flash/vqvae_epoch_83.pth
+/pscratch/sd/h/haoming/Projects/hep_models/scripts/new_train.py:79: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with autocast():
+📈 Epoch [84/84] - Total: 0.0029 | Recon: 0.0011 | VQ: 0.0018
+💾 Saved checkpoint: checkpoints/checkpoints_vqvae_normformer_flash/vqvae_epoch_84.pth
+Loading file 15 for label HToBB
+Loading file 16 for label HToBB
+Loading file 17 for label HToBB
+📊 Final Evaluation Stats
+Original mean: tensor([ 6.1933e+02, -1.3248e-03,  2.6620e-04,  1.2067e+02], device='cuda:0')
+Reconstructed mean: tensor([ 6.1932e+02,  1.2438e-02, -5.3001e-03,  1.3580e+02], device='cuda:0')
+Original std: tensor([107.9805,   0.8799,   1.8118,  23.7457], device='cuda:0')
+Reconstructed std: tensor([107.8265,   0.8848,   1.8137,  24.8601], device='cuda:0')
+✅ Saved plot to /pscratch/sd/h/haoming/Projects/hep_models/plot/training_plots/jet_recon_overlay_normformer_particles.png
+Traceback (most recent call last):
+  File "/pscratch/sd/h/haoming/Projects/hep_models/scripts/new_train.py", line 164, in <module>
+    vqvae.plot_model(
+  File "/pscratch/sd/h/haoming/Projects/hep_models/models/NormFormer_Flash.py", line 330, in plot_model
+    ax.hist(idx, bins=bins)
+  File "/global/common/software/nersc/pe/conda-envs/24.1.0/python-3.11/nersc-python/lib/python3.11/site-packages/matplotlib/__init__.py", line 1465, in inner
+    return func(ax, *map(sanitize_sequence, args), **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/common/software/nersc/pe/conda-envs/24.1.0/python-3.11/nersc-python/lib/python3.11/site-packages/matplotlib/axes/_axes.py", line 6772, in hist
+    x = cbook._reshape_2D(x, 'x')
+        ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/common/software/nersc/pe/conda-envs/24.1.0/python-3.11/nersc-python/lib/python3.11/site-packages/matplotlib/cbook.py", line 1412, in _reshape_2D
+    raise ValueError(f'{name} must have 2 or fewer dimensions')
+ValueError: x must have 2 or fewer dimensions

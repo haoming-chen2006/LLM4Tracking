@@ -1,0 +1,30 @@
+Loading file 70 for label HToBB
+Loading file 71 for label HToBB
+Loading file 72 for label HToBB
+Loading file 73 for label HToBB
+Loading file 74 for label HToBB
+Loading file 75 for label HToBB
+Loading file 76 for label HToBB
+Loading file 77 for label HToBB
+Loading file 78 for label HToBB
+Loading file 79 for label HToBB
+/pscratch/sd/h/haoming/Projects/hep_models/scripts/new_train.py:55: FutureWarning: `torch.cuda.amp.GradScaler(args...)` is deprecated. Please use `torch.amp.GradScaler('cuda', args...)` instead.
+  scaler = GradScaler()
+🔁 Resuming from: checkpoints/checkpoints_vqvae_normformer_flash/vqvae_epoch_84.pth
+/pscratch/sd/h/haoming/Projects/hep_models/scripts/new_train.py:79: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with autocast():
+📈 Epoch [85/85] - Total: 0.0029 | Recon: 0.0011 | VQ: 0.0018
+💾 Saved checkpoint: checkpoints/checkpoints_vqvae_normformer_flash/vqvae_epoch_85.pth
+Loading file 15 for label HToBB
+Loading file 16 for label HToBB
+Loading file 17 for label HToBB
+📊 Final Evaluation Stats
+Original mean: tensor([ 6.1864e+02, -1.1018e-03, -8.9409e-04,  1.2071e+02], device='cuda:0')
+Reconstructed mean: tensor([ 6.2196e+02, -7.4093e-03,  4.9689e-03,  1.3808e+02], device='cuda:0')
+Original std: tensor([107.7285,   0.8794,   1.8144,  23.6440], device='cuda:0')
+Reconstructed std: tensor([107.7372,   0.8816,   1.8127,  24.6049], device='cuda:0')
+✅ Saved plot to /pscratch/sd/h/haoming/Projects/hep_models/plot/training_plots/jet_recon_overlay_normformer_particles.png
+Traceback (most recent call last):
+  File "/pscratch/sd/h/haoming/Projects/hep_models/scripts/new_train.py", line 161, in <module>
+    plot_difference(
+TypeError: plot_difference() got an unexpected keyword argument 'labels'

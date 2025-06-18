@@ -1,0 +1,42 @@
+{
+  "os": "Linux-5.14.21-150500.55.97_13.0.78-cray_shasta_c-x86_64-with-glibc2.31",
+  "python": "CPython 3.11.7",
+  "startedAt": "2025-06-18T17:39:12.960903Z",
+  "program": "/pscratch/sd/h/haoming/Projects/hep_models/scripts/new_train_masked.py",
+  "codePath": "scripts/new_train_masked.py",
+  "git": {
+    "remote": "https://github.com/haoming-chen2006/LLM4Tracking.git",
+    "commit": "acdd9b67e3a631c3d8e0ef93ee9081899c078236"
+  },
+  "email": "haoming_chen@berkeley.edu",
+  "root": "/pscratch/sd/h/haoming/Projects/hep_models/scripts",
+  "host": "login40",
+  "executable": "/global/common/software/nersc/pe/conda-envs/24.1.0/python-3.11/nersc-python/bin/python",
+  "codePathLocal": "new_train_masked.py",
+  "cpu_count": 128,
+  "cpu_count_logical": 256,
+  "gpu": "NVIDIA A100 80GB PCIe",
+  "gpu_count": 1,
+  "disk": {
+    "/": {
+      "total": "270030999552",
+      "used": "9640620032"
+    }
+  },
+  "memory": {
+    "total": "540061999104"
+  },
+  "cpu": {
+    "count": 128,
+    "countLogical": 256
+  },
+  "gpu_nvidia": [
+    {
+      "name": "NVIDIA A100 80GB PCIe",
+      "memoryTotal": "85899345920",
+      "cudaCores": 6912,
+      "architecture": "Ampere"
+    }
+  ],
+  "cudaVersion": "12.4"
+}
