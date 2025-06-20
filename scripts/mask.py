@@ -6,7 +6,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.cuda.amp import GradScaler, autocast
-import models.NormFormer as vqvae
+# Use the flash attention version of the NormFormer VQVAE
+import models.NormFormer_Flash as vqvae
 from plot.plot import plot_tensor_jet_features, reconstruct_jet_features_from_particles
 from dataloader.masked_dataloader import load_jetclass_label_as_tensor
 import vector
@@ -39,18 +40,22 @@ model = vqvae.VQVAENormFormer(
     vq_kwargs={"num_codes": 2048, "beta": 0.25, "affine_lr": 0.0, "sync_nu": 2,
     "replace_freq": 20,
     "dim": -1},).to(device)
-all_particles = []
-for x_particles, _, _ , mask in dataloader:
-    all_particles.append(x_particles)
+# --- Compute global mean and std with log-pt transformation ---
+all_parts = []
+all_masks = []
+for x_particles, _, _, mask in dataloader:
+    all_parts.append(x_particles)
+    all_masks.append(mask)
 
+all_parts = torch.cat(all_parts, dim=0).transpose(1, 2)
+all_masks = torch.cat(all_masks, dim=0)
+all_parts[:, :, 0] = torch.log(all_parts[:, :, 0] + 1e-6)
+flat_parts = all_parts.reshape(-1, 3)
+flat_masks = all_masks.reshape(-1)
+valid_parts = flat_parts[flat_masks.bool()]
 
-
-all_particles = torch.cat(all_particles, dim=0)  
-all_particles = all_particles.transpose(1, 2)       
-flat_particles = all_particles.reshape(-1, 3) 
-
-global_mean = flat_particles.mean(dim=0).to(device)
-global_std = flat_particles.std(dim=0).to(device) + 1e-6
+global_mean = valid_parts.mean(dim=0).to(device)
+global_std = valid_parts.std(dim=0).to(device) + 1e-6
 
 
 optimizer = optim.Adam(model.parameters(), lr=lr, betas=(0.9, 0.95))
@@ -73,10 +78,12 @@ for epoch in range(start_epoch, start_epoch + num_epochs):
     model.train()
     epoch_loss, total_recon_loss, total_vq_loss = [], [], []
 
-    for x_particles, _, _ , mask in dataloader:
+    for x_particles, _, _, mask in dataloader:
         x_particles = x_particles.to(device)  # [B, 4, 128]
         mask = mask.to(device)
         x_particles = x_particles.transpose(1, 2)  # -> [B, 128, 4]
+        # Apply log transform on pt
+        x_particles[:, :, 0] = torch.log(x_particles[:, :, 0] + 1e-6)
 
         # 🧼 Apply global normalization before feeding into the model
         x_particles_normed = (x_particles - global_mean) / global_std
@@ -121,17 +128,21 @@ all_orig_jets, all_recon_jets = [], []
 dataloader_eval = load_jetclass_label_as_tensor(label="HToBB", start=15, end=18, batch_size=batch_size)
 
 with torch.no_grad():
-    for i, (x_particles, _, _) in enumerate(dataloader_eval):
+    for i, (x_particles, _, _, mask) in enumerate(dataloader_eval):
         if i >= 300:
             break
 
-        x_particles = x_particles.to(device).transpose(1, 2)  # [B, 128, 4]
-        x_particles_normed = (x_particles - global_mean) / global_std
-        x_recon, _ = model(x_particles_normed)
+        x_particles = x_particles.to(device).transpose(1, 2)
+        mask = mask.to(device)
+        x_particles[:, :, 0] = torch.log(x_particles[:, :, 0] + 1e-6)
+        x_norm = (x_particles - global_mean) / global_std
+        x_recon, _ = model(x_norm, mask=mask)
         x_recon_denorm = x_recon * global_std + global_mean
+        x_recon_denorm[:, :, 0] = torch.exp(x_recon_denorm[:, :, 0]) - 1e-6
+        x_particles[:, :, 0] = torch.exp(x_particles[:, :, 0]) - 1e-6
 
-        orig_jet = reconstruct_jet_features_from_particles(x_particles)
-        recon_jet = reconstruct_jet_features_from_particles(x_recon_denorm)
+        orig_jet = reconstruct_jet_features_from_particles(x_particles * mask.unsqueeze(-1))
+        recon_jet = reconstruct_jet_features_from_particles(x_recon_denorm * mask.unsqueeze(-1))
 
         all_orig_jets.append(orig_jet.to(device))
         all_recon_jets.append(recon_jet.to(device))
@@ -142,13 +153,16 @@ all_recon_jets = torch.cat(all_recon_jets, dim=0)
 plot_tensor_jet_features(
     [all_orig_jets, all_recon_jets],
     labels=("Original", "Reconstructed"),
-    filename=os.path.join(PLOT_DIR, "jet_recon_overlay_normformer_particles.png")
+    filename=os.path.join(PLOT_DIR, "jet_recon_overlay_normformer_particles.png"),
 )
-x_particles,x_jets,_ = next(iter(dataloader_eval))
-x_particles = x_particles.to(device)
-x_particles = x_particles.transpose(1, 2)  # [B, 4, 128]
+x_particles, _, _, mask = next(iter(dataloader_eval))
+x_particles = x_particles.to(device).transpose(1, 2)
+mask = mask.to(device)
+x_particles[:, :, 0] = torch.log(x_particles[:, :, 0] + 1e-6)
 vqvae.plot_model(
     model,
     x_particles,
-    saveas=os.path.join(PLOT_DIR, "vqvae_model_normformer_particles.png")
+    masks=mask,
+    saveas=os.path.join(PLOT_DIR, "vqvae_model_normformer_particles.png"),
 )
+

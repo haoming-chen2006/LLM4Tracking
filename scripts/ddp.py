@@ -22,7 +22,8 @@ from plot.plot import (
 # -----------------------------------------------------------------------------
 # Configuration: choose which training script to mimic
 # Options: "new", "masked", "particle"
-TRAIN_TYPE = "new"
+# Default to the masked configuration which applies log-pt transformation
+TRAIN_TYPE = "masked"
 WORLD_SIZE = 4
 
 CONFIGS = {
@@ -289,8 +290,17 @@ def ddp_eval(config: dict) -> None:
                 out, _ = model(x_norm)
 
             out_denorm = out * std + mean
-            orig_jet = reconstruct_jet_features_from_particles(x_particles)
-            recon_jet = reconstruct_jet_features_from_particles(out_denorm)
+            if log_pt:
+                out_denorm[:, :, 0] = torch.exp(out_denorm[:, :, 0]) - 1e-6
+                x_particles[:, :, 0] = torch.exp(x_particles[:, :, 0]) - 1e-6
+
+            if mask is not None:
+                orig_jet = reconstruct_jet_features_from_particles(x_particles * mask.unsqueeze(-1))
+                recon_jet = reconstruct_jet_features_from_particles(out_denorm * mask.unsqueeze(-1))
+            else:
+                orig_jet = reconstruct_jet_features_from_particles(x_particles)
+                recon_jet = reconstruct_jet_features_from_particles(out_denorm)
+
             all_orig_jets.append(orig_jet)
             all_recon_jets.append(recon_jet)
 
