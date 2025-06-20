@@ -1,4 +1,3 @@
-
 import awkward as ak
 import numpy as np
 import torch
@@ -160,7 +159,7 @@ def plot_tensor_jet_features(jet_tensor: torch.Tensor | list[torch.Tensor], labe
 
 
 def plot_all(start: int = 10, end: int = 12, batch_size: int = 512,
-             filename: str = "all_jet_features.png", overlay: bool = True) -> None:
+             filename: str = "all_jet_features.png", overlay: bool = False) -> None:
     """Plot jet feature distributions for all jet classes.
 
     Parameters
@@ -183,35 +182,30 @@ def plot_all(start: int = 10, end: int = 12, batch_size: int = 512,
         )
 
         jets = []
-        for _, x_jets, _ in dataloader:
-            jets.append(x_jets)
+        for x_particles, _, _ in dataloader:
+            jets.append(x_particles)
 
         if not jets:
             continue
 
         jets = torch.cat(jets, dim=0)
-
-        if jets.shape[1] < 4:
-            p4 = vector.array({
-                "pt": jets[:, 0].cpu().numpy(),
-                "eta": jets[:, 1].cpu().numpy(),
-                "phi": jets[:, 2].cpu().numpy(),
-                "mass": np.zeros_like(jets[:,0].detach().cpu().numpy()),
-            })
-            mass = torch.tensor(p4.mass, dtype=jets.dtype)
-            jets = torch.stack([jets[:, 0], jets[:, 1], jets[:, 2], mass], dim=1)
-
         jet_tensors.append(jets)
         labels.append(display_name)
 
     if not jet_tensors:
         return
-
+    print(f"✅ Total jets: {sum(j.shape[0] for j in jet_tensors)} for {start}-{end} files")
+    print("jet shape" + str(jet_tensors.shape))
     if overlay:
-        plot_tensor_jet_features(jet_tensors, labels=labels, filename=filename)
+        jets = [reconstruct_jet_features_from_particles(j) for j in jet_tensors]
+        plot_tensor_jet_features(jets, labels=labels, filename=filename)
     else:
-        all_jets = torch.cat(jet_tensors, dim=0)
-        plot_tensor_jet_features(all_jets, labels=["All jets"], filename=filename)
+        # Concatenate all jets and reconstruct features from all particles
+        all_jets_particles = torch.cat(jet_tensors, dim=0)  # shape: [N, M, 3]
+        all_jets_particles = all_jets_particles.transpose(1, 2)  # shape: [N, 3, M]
+        print("shape of all jets particles: ", all_jets_particles.shape)
+        jets = reconstruct_jet_features_from_particles(all_jets_particles)
+        plot_tensor_jet_features(jets, labels=["All jets"], filename=filename)
 
 
 
@@ -224,7 +218,7 @@ def reconstruct_jet_features_from_particles(x_particles: torch.Tensor) -> torch.
     Returns: [B, 4] tensor (pt, eta, phi, mass), same device as input
     """
     device = x_particles.device
-    pt, eta, phi = x_particles.unbind(dim=-1)
+    pt, eta, phi = x_particles[:3].unbind(dim=-1)
 
     # Build particle 4-momenta assuming massless particles
     p4 = vector.arr({
