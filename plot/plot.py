@@ -36,13 +36,16 @@ def plot_jet_and_particle_features(label="HToBB", start=10, end=12, batch_size=5
     jet_eta = x_jets_all[:, 1].cpu().numpy()
     jet_phi = x_jets_all[:, 2].cpu().numpy()
 
-    # Compute jet mass
-    p4 = vector.array({
-        "pt": jet_pt,
-        "eta": jet_eta,
-        "phi": jet_phi,
-    })
-    jet_mass = p4.mass
+    # Compute jet mass if not provided
+    if x_jets_all.shape[1] > 3:
+        jet_mass = x_jets_all[:, 3].cpu().numpy()
+    else:
+        p4 = vector.array({
+            "pt": jet_pt,
+            "eta": jet_eta,
+            "phi": jet_phi,
+        })
+        jet_mass = p4.mass
 
     # Particle-level features
     part_pt = x_particles_all[:, 0, :].cpu().numpy()
@@ -65,6 +68,7 @@ def plot_jet_and_particle_features(label="HToBB", start=10, end=12, batch_size=5
     hist_plot(axs[0], ak.to_numpy(jets.pt), np.linspace(400, 1200, 100), "Jet $p_T$ [GeV]")
     hist_plot(axs[1], ak.to_numpy(jets.eta), np.linspace(-2.5, 2.5, 100), "Jet $\\eta$")
     hist_plot(axs[2], ak.to_numpy(jets.phi), np.linspace(-np.pi, np.pi, 100), "Jet $\\phi$")
+    hist_plot(axs[3], ak.to_numpy(jets.mass), np.linspace(0, 300, 100), "Jet mass [GeV]")
 
     # Particle-level with tighter bounds
     hist_plot(axs[4], ak.to_numpy(ak.flatten(parts.pt)), np.linspace(0, 50, 100), "Part. $p_T$ [GeV]")
@@ -143,6 +147,42 @@ def plot_tensor_jet_features(jet_tensor: torch.Tensor, labels=("Jets 1", "Jets 2
     print(f"✅ Saved plot to {filename}")
 
 
+def plot_all(start: int = 10, end: int = 12, batch_size: int = 512,
+             filename: str = "all_jet_features.png") -> None:
+    """Plot jet feature distributions for all jet classes."""
+    jet_tensors = []
+    labels = []
+
+    for display_name, label in jetclass_labels.items():
+        dataloader = load_jetclass_label_as_tensor(
+            label=label, start=start, end=end, batch_size=batch_size
+        )
+
+        jets = []
+        for _, x_jets, _ in dataloader:
+            jets.append(x_jets)
+
+        if not jets:
+            continue
+
+        jets = torch.cat(jets, dim=0)
+
+        if jets.shape[1] < 4:
+            p4 = vector.array({
+                "pt": jets[:, 0].cpu().numpy(),
+                "eta": jets[:, 1].cpu().numpy(),
+                "phi": jets[:, 2].cpu().numpy(),
+            })
+            mass = torch.tensor(p4.mass, dtype=jets.dtype)
+            jets = torch.stack([jets[:, 0], jets[:, 1], jets[:, 2], mass], dim=1)
+
+        jet_tensors.append(jets)
+        labels.append(display_name)
+
+    if jet_tensors:
+        plot_tensor_jet_features(jet_tensors, labels=labels, filename=filename)
+
+
 
 
 import vector
@@ -194,4 +234,6 @@ def plot_difference(orig_jets: torch.Tensor, recon_jets: torch.Tensor,
     plt.savefig(filename, dpi=300)
     print(f"✅ Saved plot to {filename}")
 
-plot_jet_and_particle_features(label="HToBB", start=10, end=12, batch_size=512, output_prefix="HToBB")
+
+if __name__ == "__main__":
+    plot_all()
