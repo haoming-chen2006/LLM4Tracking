@@ -35,14 +35,12 @@ def plot_jet_and_particle_features(label="HToBB", start=10, end=12, batch_size=5
     jet_pt = x_jets_all[:, 0].cpu().numpy()
     jet_eta = x_jets_all[:, 1].cpu().numpy()
     jet_phi = x_jets_all[:, 2].cpu().numpy()
-    jet_energy = x_jets_all[:, 3].cpu().numpy()
 
     # Compute jet mass
     p4 = vector.array({
         "pt": jet_pt,
         "eta": jet_eta,
         "phi": jet_phi,
-        "E": jet_energy,
     })
     jet_mass = p4.mass
 
@@ -67,7 +65,6 @@ def plot_jet_and_particle_features(label="HToBB", start=10, end=12, batch_size=5
     hist_plot(axs[0], ak.to_numpy(jets.pt), np.linspace(400, 1200, 100), "Jet $p_T$ [GeV]")
     hist_plot(axs[1], ak.to_numpy(jets.eta), np.linspace(-2.5, 2.5, 100), "Jet $\\eta$")
     hist_plot(axs[2], ak.to_numpy(jets.phi), np.linspace(-np.pi, np.pi, 100), "Jet $\\phi$")
-    hist_plot(axs[3], ak.to_numpy(jets.mass), np.linspace(0, 400, 100), "Jet Mass [GeV]")
 
     # Particle-level with tighter bounds
     hist_plot(axs[4], ak.to_numpy(ak.flatten(parts.pt)), np.linspace(0, 50, 100), "Part. $p_T$ [GeV]")
@@ -197,4 +194,4 @@ def plot_difference(orig_jets: torch.Tensor, recon_jets: torch.Tensor,
     plt.savefig(filename, dpi=300)
     print(f"✅ Saved plot to {filename}")
 
-
+plot_jet_and_particle_features(label="HToBB", start=10, end=12, batch_size=512, output_prefix="HToBB")
