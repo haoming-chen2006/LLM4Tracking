@@ -183,27 +183,28 @@ def plot_all(start: int = 10, end: int = 12, batch_size: int = 512,
 
         jets = []
         for x_particles, _, _ in dataloader:
-            jets.append(x_particles)
+            # dataloader returns [B, F, N] with pt/eta/phi as features
+            # Move the feature dimension to the end so shape becomes [B, N, 3]
+            jets.append(x_particles.transpose(1, 2))
 
         if not jets:
             continue
 
-        jets = torch.cat(jets, dim=0)
+        jets = torch.cat(jets, dim=0)  # [n_jets, N, 3]
         jet_tensors.append(jets)
         labels.append(display_name)
 
     if not jet_tensors:
         return
-    print(f"✅ Total jets: {sum(j.shape[0] for j in jet_tensors)} for {start}-{end} files")
-    print("jet shape" + str(jet_tensors.shape))
+    print(
+        f"✅ Total jets: {sum(j.shape[0] for j in jet_tensors)} for {start}-{end} files"
+    )
     if overlay:
         jets = [reconstruct_jet_features_from_particles(j) for j in jet_tensors]
         plot_tensor_jet_features(jets, labels=labels, filename=filename)
     else:
         # Concatenate all jets and reconstruct features from all particles
-        all_jets_particles = torch.cat(jet_tensors, dim=0)  # shape: [N, M, 3]
-        all_jets_particles = all_jets_particles.transpose(1, 2)  # shape: [N, 3, M]
-        print("shape of all jets particles: ", all_jets_particles.shape)
+        all_jets_particles = torch.cat(jet_tensors, dim=0)  # [N, n_constits, 3]
         jets = reconstruct_jet_features_from_particles(all_jets_particles)
         plot_tensor_jet_features(jets, labels=["All jets"], filename=filename)
 
@@ -218,23 +219,37 @@ def reconstruct_jet_features_from_particles(x_particles: torch.Tensor) -> torch.
     Returns: [B, 4] tensor (pt, eta, phi, mass), same device as input
     """
     device = x_particles.device
-    pt, eta, phi = x_particles[:3].unbind(dim=-1)
+
+    if x_particles.ndim != 3:
+        raise ValueError("x_particles must be a 3D tensor")
+
+    # Support both [B, N, 3] and [B, 3, N] layouts
+    if x_particles.shape[-1] == 3:
+        pt = x_particles[..., 0]
+        eta = x_particles[..., 1]
+        phi = x_particles[..., 2]
+    elif x_particles.shape[1] == 3:
+        pt = x_particles[:, 0, :]
+        eta = x_particles[:, 1, :]
+        phi = x_particles[:, 2, :]
+    else:
+        raise ValueError("Tensor shape must have 3 features")
 
     # Build particle 4-momenta assuming massless particles
     p4 = vector.arr({
         "pt": pt.detach().cpu().numpy(),
         "eta": eta.detach().cpu().numpy(),
         "phi": phi.detach().cpu().numpy(),
-        "mass": np.zeros_like(pt.detach().cpu().numpy()),  # assume massless
+        # assume massless constituents
+        "mass": np.zeros_like(pt.detach().cpu().numpy()),
     })
 
     jets = p4.sum(axis=1)
 
-    # Return pt, eta, phi, mass
     jets_np = np.stack([jets.pt, jets.eta, jets.phi, jets.mass], axis=-1)
     jets_tensor = torch.from_numpy(jets_np).to(device).float()
 
-    return jets_tensor  # shape: [B, 4]
+    return jets_tensor
 
 
 def plot_difference(orig_jets: torch.Tensor, recon_jets: torch.Tensor,
