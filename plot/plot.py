@@ -107,13 +107,25 @@ DEFAULT_LABELS = {
 }
 
 
-def plot_tensor_jet_features(jet_tensor: torch.Tensor, labels=("Jets 1", "Jets 2"), filename="tensor_jet_features.png"):
+def plot_tensor_jet_features(jet_tensor: torch.Tensor | list[torch.Tensor], labels=None, filename="tensor_jet_features.png"):
+    """Plot 4 jet features (pt, eta, phi, mass) from one or more PyTorch tensors.
+
+    Parameters
+    ----------
+    jet_tensor: Tensor or list[Tensor]
+        Single tensor of shape ``[N, 4]`` or a list of such tensors.
+    labels: list[str] | None
+        Labels corresponding to each tensor. If ``None`` labels will be
+        generated automatically.
+    filename: str
+        Output file name.
     """
-    Plot 4 jet features (pt, eta, phi, mass) from one or more PyTorch tensors.
-    Assumes input shape is [N, 4] with features [pt, eta, phi, mass].
-    """
+
     if isinstance(jet_tensor, torch.Tensor):
-        jet_tensor = [jet_tensor, jet_tensor.clone()]
+        jet_tensor = [jet_tensor]
+
+    if labels is None:
+        labels = [f"Jets {i+1}" for i in range(len(jet_tensor))]
 
     fig, axarr = plt.subplots(1, 4, figsize=(18, 4))
     bins_dict = {
@@ -148,8 +160,20 @@ def plot_tensor_jet_features(jet_tensor: torch.Tensor, labels=("Jets 1", "Jets 2
 
 
 def plot_all(start: int = 10, end: int = 12, batch_size: int = 512,
-             filename: str = "all_jet_features.png") -> None:
-    """Plot jet feature distributions for all jet classes."""
+             filename: str = "all_jet_features.png", overlay: bool = True) -> None:
+    """Plot jet feature distributions for all jet classes.
+
+    Parameters
+    ----------
+    start, end, batch_size : int
+        Range of files and batch size passed to the dataloader.
+    filename : str
+        Output plot file name.
+    overlay : bool, optional
+        If ``True`` (default) the distributions from different jet classes are
+        overlaid.  If ``False`` all jets are concatenated and a single
+        distribution is produced.
+    """
     jet_tensors = []
     labels = []
 
@@ -180,8 +204,14 @@ def plot_all(start: int = 10, end: int = 12, batch_size: int = 512,
         jet_tensors.append(jets)
         labels.append(display_name)
 
-    if jet_tensors:
+    if not jet_tensors:
+        return
+
+    if overlay:
         plot_tensor_jet_features(jet_tensors, labels=labels, filename=filename)
+    else:
+        all_jets = torch.cat(jet_tensors, dim=0)
+        plot_tensor_jet_features(all_jets, labels=["All jets"], filename=filename)
 
 
 
