@@ -172,6 +172,7 @@ def plot_all(start: int = 10, end: int = 12, batch_size: int = 512,
                 "pt": jets[:, 0].cpu().numpy(),
                 "eta": jets[:, 1].cpu().numpy(),
                 "phi": jets[:, 2].cpu().numpy(),
+                "mass": np.zeros_like(jets[:,0].detach().cpu().numpy()),
             })
             mass = torch.tensor(p4.mass, dtype=jets.dtype)
             jets = torch.stack([jets[:, 0], jets[:, 1], jets[:, 2], mass], dim=1)
@@ -237,3 +238,4 @@ def plot_difference(orig_jets: torch.Tensor, recon_jets: torch.Tensor,
 
 if __name__ == "__main__":
     plot_all()
+
