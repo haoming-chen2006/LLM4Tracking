@@ -16,11 +16,11 @@ PLOT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__
 os.makedirs(PLOT_DIR, exist_ok=True)
 
 batch_size = 128
-num_epochs = 50
+num_epochs = 1
 lr = 2e-4
 start = 10
-end = 14
-checkpoint_dir = "checkpoints/checkpoints_vqvae_jet"
+end = 11
+checkpoint_dir = "checkpoints/checkpoints_jet"
 os.makedirs(checkpoint_dir, exist_ok=True)
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -37,7 +37,7 @@ print(f"✅ Computed global std: {global_std.flatten()}")
 
 
 model = vqvae.VQVAEJet(
-    input_dim=4,
+    input_dim=3,
     hidden_dim=256,
     z_dim=128,
     num_embeddings=1024,

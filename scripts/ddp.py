@@ -23,16 +23,16 @@ from plot.plot import (
 # Configuration: choose which training script to mimic
 # Options: "new", "masked", "particle"
 # Default to the masked configuration which applies log-pt transformation
-TRAIN_TYPE = "masked"
+TRAIN_TYPE = "new"
 WORLD_SIZE = 4
 
 CONFIGS = {
     "new": {
         "batch_size": 512,
-        "num_epochs": 1,
+        "num_epochs": 10,
         "learning_rate": 2e-4,
-        "start": 70,
-        "end": 80,
+        "start": 10,
+        "end": 40,
         "vq_kwargs": {"num_codes": 2048, "beta": 0.25, "affine_lr": 0.0,
                       "sync_nu": 2, "replace_freq": 20, "dim": -1},
         "checkpoint_dir": "checkpoints/checkpoints_vqvae_normformer_flash",

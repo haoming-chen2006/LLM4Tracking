@@ -27,31 +27,31 @@ CONFIGS = {
         "batch_size": 512,
         "num_epochs": 1,
         "learning_rate": 2e-4,
-        "start": 70,
-        "end": 80,
+        "start": 10,
+        "end": 30,
         "vq_kwargs": {"num_codes": 2048, "beta": 0.25, "affine_lr": 0.0,
                       "sync_nu": 2, "replace_freq": 20, "dim": -1},
-        "checkpoint_dir": "checkpoints/checkpoints_vqvae_normformer_flash",
+        "checkpoint_dir": "checkpoints/all_checkpoints_vqvae_normformer_flash",
     },
     "masked": {
         "batch_size": 512,
         "num_epochs": 10,
         "learning_rate": 2e-4,
-        "start": 70,
-        "end": 80,
+        "start": 10,
+        "end": 30,
         "vq_kwargs": {"num_codes": 2048, "beta": 0.25, "affine_lr": 0.0,
                       "sync_nu": 2, "replace_freq": 20, "dim": -1},
-        "checkpoint_dir": "checkpoints/checkpoints_vqvae_normformer_flash_masked",
+        "checkpoint_dir": "checkpoints/all_checkpoints_vqvae_normformer_flash_masked",
     },
     "particle": {
         "batch_size": 512,
-        "num_epochs": 1,
+        "num_epochs": 10,
         "learning_rate": 2e-4,
         "start": 10,
-        "end": 11,
+        "end": 30,
         "vq_kwargs": {"num_codes": 2048, "beta": 0.25, "affine_lr": 0.0,
                       "sync_nu": 2, "replace_freq": 20, "dim": -1},
-        "checkpoint_dir": "checkpoints/checkpoints_vqvae_normformer_new",
+        "checkpoint_dir": "checkpoints/all_checkpoints_vqvae_normformer_new",
     },
 }
 
@@ -234,6 +234,8 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
                 f"Epoch {epoch+1}/{config['num_epochs']} - Total: {epoch_loss.item():.4f} | "
                 f"Recon: {recon_loss.item():.4f} | VQ: {vq_loss.item():.4f}"
             )
+            unique_codes = loss_dict["q"].unique().numel()
+            print(f"🧩 Unique codes used: {unique_codes}")
             if epoch + 1 == config["num_epochs"]:
                 torch.save(
                     {
