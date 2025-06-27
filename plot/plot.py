@@ -125,6 +125,9 @@ def plot_tensor_jet_features(jet_tensor: torch.Tensor | list[torch.Tensor], labe
 
     if labels is None:
         labels = [f"Jets {i+1}" for i in range(len(jet_tensor))]
+    "if only 3 feeatures are provided, assume mass is 0"
+    if jet_tensor[0].shape[1] == 3:
+        jet_tensor = [torch.cat([j, torch.zeros(j.shape[0], 1, device=j.device)], dim=1) for j in jet_tensor]
 
     fig, axarr = plt.subplots(1, 4, figsize=(18, 4))
     bins_dict = {
@@ -159,7 +162,7 @@ def plot_tensor_jet_features(jet_tensor: torch.Tensor | list[torch.Tensor], labe
 
 
 def plot_all(start: int = 10, end: int = 12, batch_size: int = 512,
-             filename: str = "all_jet_features.png", overlay: bool = False) -> None:
+             filename: str = "all_jet_features.png", overlay: bool = True) -> None:
     """Plot jet feature distributions for all jet classes.
 
     Parameters

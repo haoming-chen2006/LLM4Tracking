@@ -37,8 +37,8 @@ CONFIGS = {
         "batch_size": 512,
         "num_epochs": 10,
         "learning_rate": 2e-4,
-        "start": 10,
-        "end": 30,
+        "start": 30,
+        "end": 40,
         "vq_kwargs": {"num_codes": 2048, "beta": 0.25, "affine_lr": 0.0,
                       "sync_nu": 2, "replace_freq": 20, "dim": -1},
         "checkpoint_dir": "checkpoints/all_checkpoints_vqvae_normformer_flash_masked",
@@ -184,8 +184,28 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
     scaler = GradScaler()
 
     os.makedirs(config["checkpoint_dir"], exist_ok=True)
+    
+    # Load most recent checkpoint
+    start_epoch = 0
+    if rank == 0:
+        ckpts = [f for f in os.listdir(config["checkpoint_dir"]) if f.startswith("vqvae_epoch_") and f.endswith(".pth")]
+        if ckpts:
+            latest = max(ckpts, key=lambda x: int(x.split("_")[-1].split(".")[0]))
+            checkpoint_path = os.path.join(config["checkpoint_dir"], latest)
+            checkpoint = torch.load(checkpoint_path, map_location=device)
+            model.module.load_state_dict(checkpoint["model_state"])
+            optimizer.load_state_dict(checkpoint["optimizer_state"])
+            start_epoch = checkpoint["epoch"]
+            print(f"🔄 Loaded checkpoint from {checkpoint_path} (epoch {start_epoch})")
+        else:
+            print("🆕 No checkpoint found, starting from scratch")
+    
+    # Broadcast start_epoch to all processes
+    start_epoch_tensor = torch.tensor(start_epoch, device=device)
+    dist.broadcast(start_epoch_tensor, 0)
+    start_epoch = start_epoch_tensor.item()
 
-    for epoch in range(config["num_epochs"]):
+    for epoch in range(start_epoch, config["num_epochs"]):
         sampler.set_epoch(epoch)
         model.train()
         epoch_loss = torch.zeros(1, device=device)
@@ -236,15 +256,19 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
             )
             unique_codes = loss_dict["q"].unique().numel()
             print(f"🧩 Unique codes used: {unique_codes}")
-            if epoch + 1 == config["num_epochs"]:
+            
+            # Save checkpoint every 5 epochs or at the end
+            if (epoch + 1) % 5 == 0 or epoch + 1 == config["num_epochs"]:
+                checkpoint_path = os.path.join(config["checkpoint_dir"], f"vqvae_epoch_{epoch+1}.pth")
                 torch.save(
                     {
                         "epoch": epoch + 1,
                         "model_state": model.module.state_dict(),
                         "optimizer_state": optimizer.state_dict(),
                     },
-                    os.path.join(config["checkpoint_dir"], f"vqvae_epoch_{epoch+1}.pth"),
+                    checkpoint_path,
                 )
+                print(f"💾 Saved checkpoint at {checkpoint_path}")
 
     cleanup()
 
@@ -256,19 +280,19 @@ def ddp_eval(config: dict) -> None:
         use_mask = True
         log_pt = True
         dataset = load_all_labels_dataset(config["start"], config["end"], True)
-        from dataloader.masked_dataloader import load_jetclass_label_as_tensor
+        eval_dataset = load_all_labels_dataset(11, 12, True)
         model_module = __import__("models.NormFormer_Flash", fromlist=["VQVAENormFormer"])
     elif config["type"] == "new":
         use_mask = False
         log_pt = False
         dataset = load_all_labels_dataset(config["start"], config["end"], False)
-        from dataloader.dataloader import load_jetclass_label_as_tensor
+        eval_dataset = load_all_labels_dataset(11, 12, False)
         model_module = __import__("models.NormFormer_Flash", fromlist=["VQVAENormFormer"])
     else:
         use_mask = False
         log_pt = False
         dataset = load_all_labels_dataset(config["start"], config["end"], False)
-        from dataloader.dataloader import load_jetclass_label_as_tensor
+        eval_dataset = load_all_labels_dataset(11, 12, False)
         model_module = __import__("models.NormFormer", fromlist=["VQVAENormFormer"])
 
     mean, std = compute_global_stats(dataset, config["batch_size"], log_pt, use_mask)
@@ -291,7 +315,7 @@ def ddp_eval(config: dict) -> None:
         model.load_state_dict(checkpoint["model_state"])
 
     model.eval()
-    dataloader_eval = load_jetclass_label_as_tensor(label="HToBB", start=15, end=18, batch_size=config["batch_size"])
+    dataloader_eval = DataLoader(eval_dataset, batch_size=config["batch_size"], shuffle=False)
     all_orig_jets, all_recon_jets = [], []
 
     with torch.no_grad():

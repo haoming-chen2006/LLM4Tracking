@@ -63,7 +63,7 @@ class FlashNormformerBlock(nn.Module):
                 bool_mask = bool_mask.unsqueeze(1).unsqueeze(2).expand(
                     B, self.num_heads, T, T
                 )
-                attn_mask = bool_mask.reshape(B * self.num_heads, T, T)
+                attn_mask = bool_mask
             else:
                 attn_mask = None
             attn_out = F.scaled_dot_product_attention(
