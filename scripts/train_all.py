@@ -7,6 +7,7 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.utils.data import DataLoader, DistributedSampler, TensorDataset
 from torch.cuda.amp import GradScaler, autocast
+import wandb
 
 PLOT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                         "plot", "training_plots")
@@ -25,7 +26,7 @@ WORLD_SIZE = 4
 CONFIGS = {
     "new": {
         "batch_size": 512,
-        "num_epochs": 1,
+        "num_epochs": 10,
         "learning_rate": 2e-4,
         "start": 10,
         "end": 30,
@@ -35,10 +36,10 @@ CONFIGS = {
     },
     "masked": {
         "batch_size": 512,
-        "num_epochs": 10,
+        "num_epochs": 20,
         "learning_rate": 2e-4,
-        "start": 30,
-        "end": 40,
+        "start": 40,
+        "end": 50,
         "vq_kwargs": {"num_codes": 2048, "beta": 0.25, "affine_lr": 0.0,
                       "sync_nu": 2, "replace_freq": 20, "dim": -1},
         "checkpoint_dir": "checkpoints/all_checkpoints_vqvae_normformer_flash_masked",
@@ -138,6 +139,22 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
     setup(rank, world_size)
     device = torch.device(f"cuda:{rank}")
 
+    # Initialize wandb only on rank 0
+    if rank == 0:
+        wandb.init(
+            project="hep-models-vqvae",
+            name=f"train_{config['type']}_{config['start']}_{config['end']}",
+            config={
+                "batch_size": config["batch_size"],
+                "num_epochs": config["num_epochs"],
+                "learning_rate": config["learning_rate"],
+                "world_size": world_size,
+                "train_type": config["type"],
+                "data_range": f"{config['start']}-{config['end']}",
+                **config["vq_kwargs"]
+            }
+        )
+
     if config["type"] == "masked":
         dataset = load_all_labels_dataset(config["start"], config["end"], True)
         use_mask = True
@@ -205,14 +222,33 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
     dist.broadcast(start_epoch_tensor, 0)
     start_epoch = start_epoch_tensor.item()
 
+    if rank == 0:
+        print(f"🚀 Training from epoch {start_epoch + 1} to {config['num_epochs']}")
+        print(f"📊 Dataset size: {len(dataset)}")
+        print(f"🔢 Total batches per epoch: {len(dataloader)}")
+
+    # Fix: Check if we need to train at all
+    if start_epoch >= config["num_epochs"]:
+        if rank == 0:
+            print(f"⚠️  Training already completed! start_epoch ({start_epoch}) >= num_epochs ({config['num_epochs']})")
+            wandb.finish()
+        cleanup()
+        return
+
     for epoch in range(start_epoch, config["num_epochs"]):
+        if rank == 0:
+            print(f"🔄 Starting epoch {epoch + 1}/{config['num_epochs']}")
+        
         sampler.set_epoch(epoch)
         model.train()
         epoch_loss = torch.zeros(1, device=device)
         recon_loss = torch.zeros(1, device=device)
         vq_loss = torch.zeros(1, device=device)
-
-        for batch in dataloader:
+        
+        batch_count = 0
+        for batch_idx, batch in enumerate(dataloader):
+            batch_count += 1
+            
             if use_mask:
                 x_particles, _, _, mask = [b.to(device) for b in batch]
             else:
@@ -242,6 +278,20 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
             recon_loss += r_loss.detach()
             vq_loss += v_loss.detach()
 
+            # Log batch metrics every 50 batches (more frequent)
+            if rank == 0 and batch_idx % 50 == 0:
+                print(f"  Batch {batch_idx}/{len(dataloader)} - Loss: {loss.item():.4f}")
+                wandb.log({
+                    "batch_loss": loss.item(),
+                    "batch_recon_loss": r_loss.item(),
+                    "batch_vq_loss": v_loss.item(),
+                    "epoch": epoch + 1,
+                    "batch": batch_idx
+                })
+
+        if rank == 0:
+            print(f"✅ Epoch {epoch + 1} completed - Processed {batch_count} batches")
+
         epoch_loss /= len(dataloader)
         recon_loss /= len(dataloader)
         vq_loss /= len(dataloader)
@@ -257,6 +307,16 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
             unique_codes = loss_dict["q"].unique().numel()
             print(f"🧩 Unique codes used: {unique_codes}")
             
+            # Log epoch metrics to wandb
+            wandb.log({
+                "epoch": epoch + 1,
+                "epoch_loss": epoch_loss.item(),
+                "epoch_recon_loss": recon_loss.item(),
+                "epoch_vq_loss": vq_loss.item(),
+                "unique_codes": unique_codes,
+                "learning_rate": optimizer.param_groups[0]['lr']
+            })
+            
             # Save checkpoint every 5 epochs or at the end
             if (epoch + 1) % 5 == 0 or epoch + 1 == config["num_epochs"]:
                 checkpoint_path = os.path.join(config["checkpoint_dir"], f"vqvae_epoch_{epoch+1}.pth")
@@ -269,6 +329,12 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
                     checkpoint_path,
                 )
                 print(f"💾 Saved checkpoint at {checkpoint_path}")
+                
+                # Log checkpoint save to wandb
+                wandb.log({"checkpoint_saved": epoch + 1})
+
+    if rank == 0:
+        wandb.finish()
 
     cleanup()
 
