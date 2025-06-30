@@ -6,7 +6,11 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.cuda.amp import GradScaler, autocast
 import models.vqvaeMLP_jet as vqvae
-from plot.plot import plot_tensor_jet_features, reconstruct_jet_features_from_particles
+from plot.plot import (
+    plot_tensor_jet_features,
+    reconstruct_jet_features_from_particles,
+    plot_code_histogram,
+)
 from dataloader.dataloader import load_jetclass_label_as_tensor
 import vector
 
@@ -22,6 +26,15 @@ start = 10
 end = 11
 checkpoint_dir = "checkpoints/checkpoints_jet"
 os.makedirs(checkpoint_dir, exist_ok=True)
+
+vq_kwargs = {
+    "num_codes": 1024,
+    "beta": 0.25,
+    "affine_lr": 0.0,
+    "sync_nu": 2,
+    "replace_freq": 20,
+    "dim": -1,
+}
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print("\U0001F4E6 Loading full dataset for global normalization...")
@@ -40,10 +53,11 @@ model = vqvae.VQVAEJet(
     input_dim=3,
     hidden_dim=256,
     z_dim=128,
-    num_embeddings=1024,
-    commitment_cost=0.25,
+    num_embeddings=vq_kwargs["num_codes"],
+    commitment_cost=vq_kwargs["beta"],
     mean=global_mean,  # [1, 1, 4]
-    std=global_std     # [1, 1, 4]
+    std=global_std,    # [1, 1, 4]
+    vq_kwargs=vq_kwargs,
 )
 model = model.to(device)
 optimizer = optim.Adam(model.parameters(), lr=lr, betas=(0.9, 0.95))
@@ -66,6 +80,7 @@ for epoch in range(start_epoch, start_epoch + num_epochs):
     epoch_loss = []
     total_recon_loss = []
     total_vq_loss = []
+    codes_this_epoch = []
 
     for _, x_jet, _ in dataloader:
         x_jets = x_jet.to(device)       # (B,  4)
@@ -84,6 +99,8 @@ for epoch in range(start_epoch, start_epoch + num_epochs):
         epoch_loss.append(loss.detach())
         total_recon_loss.append(recon_loss.detach())
         total_vq_loss.append(vq_loss.detach())
+        if isinstance(loss_dict, dict) and "q" in loss_dict:
+            codes_this_epoch.append(loss_dict["q"].detach().cpu())
 
     if epoch % 10 == 0:
         print(f"\U0001F4C8 Epoch [{epoch+1}/{num_epochs}] - Total: {torch.stack(epoch_loss).mean().item():.4f} | Recon: {torch.stack(total_recon_loss).mean().item():.4f} | VQ: {torch.stack(total_vq_loss).mean().item():.4f}")
@@ -98,6 +115,13 @@ for epoch in range(start_epoch, start_epoch + num_epochs):
             "optimizer_state": optimizer.state_dict(),
         }, save_path)
         print(f"\U0001F4BE Saved checkpoint: {save_path}")
+        if codes_this_epoch:
+            codes_tensor = torch.cat(codes_this_epoch).view(-1)
+            plot_code_histogram(
+                codes_tensor,
+                vq_kwargs["num_codes"],
+                os.path.join(PLOT_DIR, f"jet_code_hist_epoch_{epoch+1}.png"),
+            )
 
 # === Post-Training Recon Analysis ===
 model.eval()

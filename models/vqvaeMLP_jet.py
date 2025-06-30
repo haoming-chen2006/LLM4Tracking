@@ -59,9 +59,13 @@ class VQVAEJet(nn.Module):
         commitment_cost=0.25,
         mean=None,
         std=None,
+        vq_kwargs=None,
     ):
         super().__init__()
         assert mean is not None and std is not None, "Must provide global mean and std as [1, 4] tensors"
+
+        if vq_kwargs is None:
+            vq_kwargs = {}
 
         self.norm = FeatureNormJet(mean, std)
         self.encoder = EncoderJet(input_dim, hidden_dim, z_dim)
@@ -73,6 +77,7 @@ class VQVAEJet(nn.Module):
             affine_lr=0.1,
             affine_groups=1,
             replace_freq=10,
+            **vq_kwargs,
         )
         self.decoder = DecoderJet(z_dim, hidden_dim, input_dim)
 

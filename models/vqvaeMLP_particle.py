@@ -63,9 +63,13 @@ class VQVAE(nn.Module):
         commitment_cost=0.25,
         mean=None,
         std=None,
+        vq_kwargs=None,
     ):
         super().__init__()
         assert mean is not None and std is not None, "Must provide global mean and std as [1, 1, 4] tensors"
+
+        if vq_kwargs is None:
+            vq_kwargs = {}
 
         self.norm = FeatureNorm(mean, std)
         self.encoder = Encoder(input_dim, hidden_dim, z_dim)
@@ -77,6 +81,7 @@ class VQVAE(nn.Module):
             affine_lr=0.1,             # optional affine codebook transform
             affine_groups=1,           # keep as 1 unless you want grouped affine
             replace_freq=10,            # optionally replace dead codes every N steps
+            **vq_kwargs,
         )
         self.decoder = Decoder(z_dim, hidden_dim, input_dim)
 
