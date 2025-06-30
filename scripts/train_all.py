@@ -244,6 +244,7 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
         epoch_loss = torch.zeros(1, device=device)
         recon_loss = torch.zeros(1, device=device)
         vq_loss = torch.zeros(1, device=device)
+        codes_this_epoch = []
         
         batch_count = 0
         for batch_idx, batch in enumerate(dataloader):
@@ -277,6 +278,8 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
             epoch_loss += loss.detach()
             recon_loss += r_loss.detach()
             vq_loss += v_loss.detach()
+            if "q" in loss_dict:
+                codes_this_epoch.append(loss_dict["q"].detach().cpu())
 
             # Log batch metrics every 50 batches (more frequent)
             if rank == 0 and batch_idx % 50 == 0:
@@ -298,6 +301,9 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
         for t in (epoch_loss, recon_loss, vq_loss):
             dist.all_reduce(t, op=dist.ReduceOp.SUM)
             t /= world_size
+        if codes_this_epoch:
+            codes_tensor = torch.cat(codes_this_epoch).to(device)
+            dist.all_reduce(codes_tensor, op=dist.ReduceOp.SUM)
 
         if rank == 0:
             print(
@@ -316,6 +322,14 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
                 "unique_codes": unique_codes,
                 "learning_rate": optimizer.param_groups[0]['lr']
             })
+
+            if epoch + 1 == config["num_epochs"] and codes_this_epoch:
+                codes_tensor = torch.cat(codes_this_epoch)
+                plot_code_histogram(
+                    codes_tensor,
+                    config["vq_kwargs"]["num_codes"],
+                    os.path.join(PLOT_DIR, f"all_code_hist_epoch_{epoch+1}.png"),
+                )
             
             # Save checkpoint every 5 epochs or at the end
             if (epoch + 1) % 5 == 0 or epoch + 1 == config["num_epochs"]:

@@ -278,6 +278,20 @@ def plot_difference(orig_jets: torch.Tensor, recon_jets: torch.Tensor,
     print(f"✅ Saved plot to {filename}")
 
 
+def plot_code_histogram(indices: torch.Tensor, num_codes: int, filename: str) -> None:
+    """Plot a histogram of code usage."""
+    indices = indices.view(-1).cpu().numpy()
+    plt.figure(figsize=(6, 4))
+    bins = np.arange(num_codes + 1) - 0.5
+    plt.hist(indices, bins=bins, edgecolor="black")
+    plt.xlabel("Code index")
+    plt.ylabel("Count")
+    plt.title("Codebook Usage")
+    plt.tight_layout()
+    plt.savefig(filename, dpi=300)
+    print(f"✅ Saved plot to {filename}")
+
+
 if __name__ == "__main__":
     plot_all()
 
