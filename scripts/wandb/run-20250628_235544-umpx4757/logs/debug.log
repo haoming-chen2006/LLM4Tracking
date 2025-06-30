@@ -20,3 +20,10 @@ config: {'batch_size': 512, 'num_epochs': 20, 'learning_rate': 0.0002, 'world_si
 2025-06-28 23:55:46,135 INFO    MainThread:438917 [wandb_run.py:_redirect():2371] Wrapping output streams.
 2025-06-28 23:55:46,135 INFO    MainThread:438917 [wandb_run.py:_redirect():2394] Redirects installed.
 2025-06-28 23:55:46,160 INFO    MainThread:438917 [wandb_init.py:init():1056] run started, returning control to user process
+2025-06-29 00:01:02,329 INFO    MainThread:438917 [wandb_run.py:_finish():2189] finishing run haoming_chen-university-of-california-berkeley/hep-models-vqvae/umpx4757
+2025-06-29 00:01:02,330 INFO    MainThread:438917 [wandb_run.py:_atexit_cleanup():2419] got exitcode: 0
+2025-06-29 00:01:02,331 INFO    MainThread:438917 [wandb_run.py:_restore():2401] restore
+2025-06-29 00:01:02,331 INFO    MainThread:438917 [wandb_run.py:_restore():2407] restore done
+2025-06-29 00:01:03,012 INFO    MainThread:438917 [wandb_run.py:_footer_history_summary_info():4064] rendering history
+2025-06-29 00:01:03,012 INFO    MainThread:438917 [wandb_run.py:_footer_history_summary_info():4096] rendering summary
+2025-06-29 00:01:03,012 INFO    MainThread:438917 [wandb_run.py:_footer_sync_info():4025] logging synced files

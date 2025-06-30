@@ -69,3 +69,40 @@ Loading file 47 for label WToQQ
 Loading file 48 for label WToQQ
 Loading file 49 for label WToQQ
 Loading file 40 for label TTBar
+Loading file 41 for label TTBar
+Loading file 42 for label TTBar
+Loading file 43 for label TTBar
+Loading file 44 for label TTBar
+Loading file 45 for label TTBar
+Loading file 46 for label TTBar
+Loading file 47 for label TTBar
+Loading file 48 for label TTBar
+Loading file 49 for label TTBar
+Loading file 40 for label TTBarLep
+Loading file 41 for label TTBarLep
+Loading file 42 for label TTBarLep
+Loading file 43 for label TTBarLep
+Loading file 44 for label TTBarLep
+Loading file 45 for label TTBarLep
+Loading file 46 for label TTBarLep
+Loading file 47 for label TTBarLep
+Loading file 48 for label TTBarLep
+Loading file 49 for label TTBarLep
+Loading file 40 for label ZJetsToNuNu
+Loading file 41 for label ZJetsToNuNu
+Loading file 42 for label ZJetsToNuNu
+Loading file 43 for label ZJetsToNuNu
+Loading file 44 for label ZJetsToNuNu
+Loading file 45 for label ZJetsToNuNu
+Loading file 46 for label ZJetsToNuNu
+Loading file 47 for label ZJetsToNuNu
+Loading file 48 for label ZJetsToNuNu
+Loading file 49 for label ZJetsToNuNu
+Using FlashAttention 2 for efficient attention computation.
+/pscratch/sd/h/haoming/Projects/hep_models/scripts/train_all.py:201: FutureWarning: `torch.cuda.amp.GradScaler(args...)` is deprecated. Please use `torch.amp.GradScaler('cuda', args...)` instead.
+  scaler = GradScaler()
+🔄 Loaded checkpoint from checkpoints/all_checkpoints_vqvae_normformer_flash_masked/vqvae_epoch_20.pth (epoch 20)
+🚀 Training from epoch 21 to 20
+📊 Dataset size: 10000000
+🔢 Total batches per epoch: 4883
+⚠️  Training already completed! start_epoch (20) >= num_epochs (20)

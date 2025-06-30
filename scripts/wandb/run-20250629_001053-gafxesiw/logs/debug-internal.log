@@ -1,0 +1,16 @@
+{"time":"2025-06-29T00:10:53.565829794-07:00","level":"INFO","msg":"stream: starting","core version":"0.19.9","symlink path":"/pscratch/sd/h/haoming/Projects/hep_models/scripts/wandb/run-20250629_001053-gafxesiw/logs/debug-core.log"}
+{"time":"2025-06-29T00:10:53.837076283-07:00","level":"INFO","msg":"created new stream","id":"gafxesiw"}
+{"time":"2025-06-29T00:10:53.837151157-07:00","level":"INFO","msg":"stream: started","id":"gafxesiw"}
+{"time":"2025-06-29T00:10:53.837179692-07:00","level":"INFO","msg":"writer: Do: started","stream_id":"gafxesiw"}
+{"time":"2025-06-29T00:10:53.83726702-07:00","level":"INFO","msg":"sender: started","stream_id":"gafxesiw"}
+{"time":"2025-06-29T00:10:53.837226132-07:00","level":"INFO","msg":"handler: started","stream_id":"gafxesiw"}
+{"time":"2025-06-29T00:10:54.007777973-07:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2025-06-29T01:15:40.876411961-07:00","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2025-06-29T01:15:40.876869231-07:00","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2025-06-29T01:15:41.423927473-07:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2025-06-29T01:15:41.564522422-07:00","level":"INFO","msg":"handler: operation stats","stats":{}}
+{"time":"2025-06-29T01:15:41.56788694-07:00","level":"INFO","msg":"stream: closing","id":"gafxesiw"}
+{"time":"2025-06-29T01:15:41.567943068-07:00","level":"INFO","msg":"handler: closed","stream_id":"gafxesiw"}
+{"time":"2025-06-29T01:15:41.567963357-07:00","level":"INFO","msg":"sender: closed","stream_id":"gafxesiw"}
+{"time":"2025-06-29T01:15:41.567958237-07:00","level":"INFO","msg":"writer: Close: closed","stream_id":"gafxesiw"}
+{"time":"2025-06-29T01:15:41.568237474-07:00","level":"INFO","msg":"stream: closed","id":"gafxesiw"}
