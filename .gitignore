@@ -1,0 +1,15 @@
+# ...existing content...
+
+# Weights & Biases
+wandb/
+scripts/wandb/
+*.wandb
+
+# Checkpoints
+checkpoints/
+*.pth
+*.pt
+
+# Plots
+plot/training_plots/
+plot/checkpoint_comparison/
