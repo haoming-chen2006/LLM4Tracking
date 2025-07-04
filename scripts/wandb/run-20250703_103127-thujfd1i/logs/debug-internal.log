@@ -1,0 +1,16 @@
+{"time":"2025-07-03T10:31:27.779519904-07:00","level":"INFO","msg":"stream: starting","core version":"0.19.9","symlink path":"/pscratch/sd/h/haoming/Projects/hep_models/scripts/wandb/run-20250703_103127-thujfd1i/logs/debug-core.log"}
+{"time":"2025-07-03T10:31:28.028364159-07:00","level":"INFO","msg":"created new stream","id":"thujfd1i"}
+{"time":"2025-07-03T10:31:28.0284317-07:00","level":"INFO","msg":"stream: started","id":"thujfd1i"}
+{"time":"2025-07-03T10:31:28.028472659-07:00","level":"INFO","msg":"writer: Do: started","stream_id":"thujfd1i"}
+{"time":"2025-07-03T10:31:28.028478119-07:00","level":"INFO","msg":"sender: started","stream_id":"thujfd1i"}
+{"time":"2025-07-03T10:31:28.028510802-07:00","level":"INFO","msg":"handler: started","stream_id":"thujfd1i"}
+{"time":"2025-07-03T10:31:28.204177748-07:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2025-07-03T11:33:07.384270506-07:00","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2025-07-03T11:33:07.384357114-07:00","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2025-07-03T11:33:08.000835024-07:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2025-07-03T11:33:08.195519861-07:00","level":"INFO","msg":"handler: operation stats","stats":{}}
+{"time":"2025-07-03T11:33:08.199021904-07:00","level":"INFO","msg":"stream: closing","id":"thujfd1i"}
+{"time":"2025-07-03T11:33:08.199068464-07:00","level":"INFO","msg":"handler: closed","stream_id":"thujfd1i"}
+{"time":"2025-07-03T11:33:08.199080648-07:00","level":"INFO","msg":"writer: Close: closed","stream_id":"thujfd1i"}
+{"time":"2025-07-03T11:33:08.199094795-07:00","level":"INFO","msg":"sender: closed","stream_id":"thujfd1i"}
+{"time":"2025-07-03T11:33:08.199351162-07:00","level":"INFO","msg":"stream: closed","id":"thujfd1i"}

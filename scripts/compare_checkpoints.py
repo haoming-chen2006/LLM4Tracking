@@ -18,7 +18,7 @@ PLOT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__
                         "plot", "checkpoint_comparison")
 os.makedirs(PLOT_DIR, exist_ok=True)
 
-TRAIN_TYPE = "masked"  # Change this as needed
+TRAIN_TYPE = "new"  # Change this as needed
 
 CONFIGS = {
     "new": {

@@ -20,16 +20,16 @@ from plot.plot import (
     plot_difference,
 )
 
-TRAIN_TYPE = "masked"
+TRAIN_TYPE = "new"
 WORLD_SIZE = 4
 
 CONFIGS = {
     "new": {
         "batch_size": 512,
-        "num_epochs": 10,
+        "num_epochs": 40,
         "learning_rate": 2e-4,
         "start": 10,
-        "end": 30,
+        "end": 20,
         "vq_kwargs": {"num_codes": 2048, "beta": 0.25, "affine_lr": 0.0,
                       "sync_nu": 2, "replace_freq": 20, "dim": -1},
         "checkpoint_dir": "checkpoints/all_checkpoints_vqvae_normformer_flash",
@@ -49,7 +49,7 @@ CONFIGS = {
         "num_epochs": 10,
         "learning_rate": 2e-4,
         "start": 10,
-        "end": 30,
+        "end": 20,
         "vq_kwargs": {"num_codes": 2048, "beta": 0.25, "affine_lr": 0.0,
                       "sync_nu": 2, "replace_freq": 20, "dim": -1},
         "checkpoint_dir": "checkpoints/all_checkpoints_vqvae_normformer_new",
