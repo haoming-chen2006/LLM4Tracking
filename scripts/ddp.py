@@ -7,6 +7,8 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.utils.data import DataLoader, DistributedSampler
 from torch.cuda.amp import GradScaler, autocast
+import matplotlib.pyplot as plt
+import numpy as np
 
 
 PLOT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -23,7 +25,7 @@ from plot.plot import (
 # Configuration: choose which training script to mimic
 # Options: "new", "masked", "particle"
 # Default to the masked configuration which applies log-pt transformation
-TRAIN_TYPE = "new"
+TRAIN_TYPE = "new_medium"
 WORLD_SIZE = 4
 
 CONFIGS = {
@@ -36,6 +38,28 @@ CONFIGS = {
         "vq_kwargs": {"num_codes": 2048, "beta": 0.25, "affine_lr": 0.0,
                       "sync_nu": 2, "replace_freq": 20, "dim": -1},
         "checkpoint_dir": "checkpoints/checkpoints_vqvae_normformer_flash",
+    },
+    "new_large": {
+        "batch_size": 512,
+        "num_epochs": 10,
+        "learning_rate": 2e-4,
+        "start": 10,
+        "end": 40,
+        "vq_kwargs": {"num_codes": 2048, "beta": 0.25, "affine_lr": 0.0,
+                      "sync_nu": 2, "replace_freq": 20, "dim": -1},
+        "moe_kwargs": {"num_experts": 8, "expert_capacity": 64},
+        "checkpoint_dir": "checkpoints/checkpoints_vqvae_moe_large",
+    },
+    "new_medium": {
+        "batch_size": 512,
+        "num_epochs": 10,
+        "learning_rate": 2e-4,
+        "start": 30,
+        "end": 40,
+        "vq_kwargs": {"num_codes": 4096, "beta": 0.25, "affine_lr": 0.0,
+                      "sync_nu": 2, "replace_freq": 20, "dim": -1},
+        "moe_kwargs": {"num_experts": 4, "expert_capacity": 32},
+        "checkpoint_dir": "checkpoints/checkpoints_vqvae_moe_medium",
     },
     "masked": {
         "batch_size": 512,
@@ -98,23 +122,62 @@ def compute_global_stats(dataset, batch_size, log_pt=False, use_mask=False):
     return mean, std
 
 
+def plot_token_usage(token_counts, num_codes, model_name, save_path):
+    """Plot histogram of token usage distribution"""
+    plt.figure(figsize=(12, 6))
+    
+    # Create histogram of token usage
+    usage_counts = np.bincount(token_counts.cpu().numpy(), minlength=num_codes)
+    used_tokens = np.sum(usage_counts > 0)
+    
+    plt.subplot(1, 2, 1)
+    plt.hist(usage_counts[usage_counts > 0], bins=50, alpha=0.7, edgecolor='black')
+    plt.xlabel('Number of times used')
+    plt.ylabel('Number of tokens')
+    plt.title(f'Token Usage Distribution\n{model_name}')
+    plt.grid(True, alpha=0.3)
+    
+    # Plot token utilization
+    plt.subplot(1, 2, 2)
+    token_ids = np.arange(num_codes)
+    plt.bar(token_ids[usage_counts > 0], usage_counts[usage_counts > 0], 
+            alpha=0.7, width=max(1, num_codes//1000))
+    plt.xlabel('Token ID')
+    plt.ylabel('Usage count')
+    plt.title(f'Token Utilization\n{used_tokens}/{num_codes} tokens used ({used_tokens/num_codes*100:.1f}%)')
+    plt.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    return used_tokens, usage_counts
+
 def ddp_train(rank: int, world_size: int, config: dict) -> None:
     setup(rank, world_size)
     device = torch.device(f"cuda:{rank}")
 
-    if config["type"] == "masked":
-        from dataloader.masked_dataloader import load_jetclass_label_as_dataset
-        dataset = load_jetclass_label_as_dataset(
-            label="HToBB", start=config["start"], end=config["end"])
-        use_mask = True
-        log_pt = True
-        model_module = __import__("models.NormFormer_Flash", fromlist=["VQVAENormFormer"])
-    elif config["type"] == "new":
+    # Determine model type and configuration
+    if config["type"] == "new":
         from dataloader.dataloader import load_jetclass_label_as_dataset
         dataset = load_jetclass_label_as_dataset(
             label="HToBB", start=config["start"], end=config["end"])
         use_mask = False
         log_pt = False
+        model_module = __import__("models.NormFormer_Flash", fromlist=["VQVAENormFormer"])
+    elif config["type"] in ["new_large", "new_medium"]:
+        from dataloader.dataloader import load_jetclass_label_as_dataset
+        dataset = load_jetclass_label_as_dataset(
+            label="HToBB", start=config["start"], end=config["end"])
+        use_mask = False
+        log_pt = False
+        model_module = __import__("models.MOE", fromlist=["VQVAENormFormer"])
+    elif config["type"] == "masked":
+        from dataloader.masked_dataloader import load_jetclass_label_as_dataset
+        dataset = load_jetclass_label_as_dataset(
+            label="HToBB", start=config["start"], end=config["end"])
+        use_mask = True
+        log_pt = True
         model_module = __import__("models.NormFormer_Flash", fromlist=["VQVAENormFormer"])
     else:
         from dataloader.dataloader import load_jetclass_label_as_dataset
@@ -139,14 +202,27 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
     mean = mean.to(device)
     std = std.to(device)
 
-    model = model_module.VQVAENormFormer(
-        input_dim=3,
-        latent_dim=128,
-        hidden_dim=256,
-        num_heads=8,
-        num_blocks=3,
-        vq_kwargs=config["vq_kwargs"],
-    ).to(device)
+    # Create model with MOE-specific parameters for medium/large
+    if config["type"] in ["new_large", "new_medium"]:
+        model = model_module.VQVAENormFormer(
+            input_dim=3,
+            latent_dim=128,
+            hidden_dim=256,
+            num_heads=8,
+            num_blocks=3,
+            vq_kwargs=config["vq_kwargs"],
+            moe_kwargs=config["moe_kwargs"],
+        ).to(device)
+    else:
+        model = model_module.VQVAENormFormer(
+            input_dim=3,
+            latent_dim=128,
+            hidden_dim=256,
+            num_heads=8,
+            num_blocks=3,
+            vq_kwargs=config["vq_kwargs"],
+        ).to(device)
+
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[rank])
 
     optimizer = optim.Adam(model.parameters(), lr=config["learning_rate"], betas=(0.9, 0.95))
@@ -155,12 +231,16 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
 
     os.makedirs(config["checkpoint_dir"], exist_ok=True)
 
+    # Track token usage for analysis
+    all_token_counts = []
+
     for epoch in range(config["num_epochs"]):
         sampler.set_epoch(epoch)
         model.train()
         epoch_loss = torch.zeros(1, device=device)
         recon_loss = torch.zeros(1, device=device)
         vq_loss = torch.zeros(1, device=device)
+        epoch_tokens = []
 
         for batch in dataloader:
             if use_mask:
@@ -192,6 +272,10 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
             recon_loss += r_loss.detach()
             vq_loss += v_loss.detach()
 
+            # Collect token usage
+            if rank == 0:  # Only collect on rank 0 to avoid duplicates
+                epoch_tokens.append(loss_dict["q"].detach())
+
         epoch_loss /= len(dataloader)
         recon_loss /= len(dataloader)
         vq_loss /= len(dataloader)
@@ -202,6 +286,14 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
         if rank == 0:
             print(f"Epoch {epoch+1}/{config['num_epochs']} - Total: {epoch_loss.item():.4f} | "
                   f"Recon: {recon_loss.item():.4f} | VQ: {vq_loss.item():.4f}")
+            
+            # Analyze token usage for this epoch
+            if epoch_tokens:
+                epoch_token_tensor = torch.cat(epoch_tokens, dim=0)
+                all_token_counts.append(epoch_token_tensor)
+                unique_codes = epoch_token_tensor.unique().numel()
+                print(f"🧩 Unique codes used: {unique_codes}/{config['vq_kwargs']['num_codes']}")
+            
             if epoch + 1 == config["num_epochs"]:
                 torch.save(
                     {
@@ -211,12 +303,25 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
                     },
                     os.path.join(config["checkpoint_dir"], f"vqvae_epoch_{epoch+1}.pth"),
                 )
+                
+                # Create token usage plot
+                if all_token_counts:
+                    all_tokens = torch.cat(all_token_counts, dim=0)
+                    plot_path = os.path.join(PLOT_DIR, f"token_usage_{config['type']}.png")
+                    used_tokens, usage_dist = plot_token_usage(
+                        all_tokens, 
+                        config['vq_kwargs']['num_codes'], 
+                        f"{config['type']} ({config['vq_kwargs']['num_codes']} tokens)",
+                        plot_path
+                    )
+                    print(f"📊 Token usage plot saved to {plot_path}")
+                    print(f"📈 Final utilization: {used_tokens}/{config['vq_kwargs']['num_codes']} tokens ({used_tokens/config['vq_kwargs']['num_codes']*100:.1f}%)")
 
     cleanup()
 
 
 def ddp_eval(config: dict) -> None:
-    """Run evaluation on a single device after training."""
+    """Run evaluation and create comparison plots for different token sizes"""
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     if config["type"] == "masked":
@@ -235,6 +340,14 @@ def ddp_eval(config: dict) -> None:
         use_mask = False
         log_pt = False
         model_module = __import__("models.NormFormer_Flash", fromlist=["VQVAENormFormer"])
+    elif config["type"] in ["new_large", "new_medium"]:
+        from dataloader.dataloader import (
+            load_jetclass_label_as_dataset,
+            load_jetclass_label_as_tensor,
+        )
+        use_mask = False
+        log_pt = False
+        model_module = __import__("models.MOE", fromlist=["VQVAENormFormer"])
     else:
         from dataloader.dataloader import (
             load_jetclass_label_as_dataset,
@@ -249,14 +362,26 @@ def ddp_eval(config: dict) -> None:
     mean = mean.to(device)
     std = std.to(device)
 
-    model = model_module.VQVAENormFormer(
-        input_dim=3,
-        latent_dim=128,
-        hidden_dim=256,
-        num_heads=8,
-        num_blocks=3,
-        vq_kwargs=config["vq_kwargs"],
-    ).to(device)
+    # Create model for evaluation
+    if config["type"] in ["new_large", "new_medium"]:
+        model = model_module.VQVAENormFormer(
+            input_dim=3,
+            latent_dim=128,
+            hidden_dim=256,
+            num_heads=8,
+            num_blocks=3,
+            vq_kwargs=config["vq_kwargs"],
+            moe_kwargs=config["moe_kwargs"],
+        ).to(device)
+    else:
+        model = model_module.VQVAENormFormer(
+            input_dim=3,
+            latent_dim=128,
+            hidden_dim=256,
+            num_heads=8,
+            num_blocks=3,
+            vq_kwargs=config["vq_kwargs"],
+        ).to(device)
 
     ckpts = [f for f in os.listdir(config["checkpoint_dir"]) if f.startswith("vqvae_epoch_") and f.endswith(".pth")]
     if ckpts:
@@ -307,24 +432,63 @@ def ddp_eval(config: dict) -> None:
     all_orig_jets = torch.cat(all_orig_jets, dim=0)
     all_recon_jets = torch.cat(all_recon_jets, dim=0)
 
+    # Add model name to plot filenames for distinction
+    model_suffix = f"_{config['type']}"
+    
     plot_tensor_jet_features(
         [all_orig_jets, all_recon_jets],
-        labels=("Original", "Reconstructed"),
-        filename=os.path.join(PLOT_DIR, "jet_recon_overlay_ddp.png"),
+        labels=("Original", f"Reconstructed ({config['vq_kwargs']['num_codes']} tokens)"),
+        filename=os.path.join(PLOT_DIR, f"jet_recon_overlay_ddp{model_suffix}.png"),
     )
     plot_difference(
         all_orig_jets,
         all_recon_jets,
-        filename=os.path.join(PLOT_DIR, "jet_feature_difference_ddp.png"),
+        filename=os.path.join(PLOT_DIR, f"jet_feature_difference_ddp{model_suffix}.png"),
     )
 
 
 def main() -> None:
-    config = CONFIGS[TRAIN_TYPE].copy()
-    config["type"] = TRAIN_TYPE
-    mp.spawn(ddp_train, args=(WORLD_SIZE, config), nprocs=WORLD_SIZE, join=True)
-    ddp_eval(config)
+    # Train all three models
+    models_to_train = ["new", "new_medium", "new_large"]
+    
+    for model_type in models_to_train:
+        print(f"\n🚀 Training {model_type} model...")
+        config = CONFIGS[model_type].copy()
+        config["type"] = model_type
+        
+        mp.spawn(ddp_train, args=(WORLD_SIZE, config), nprocs=WORLD_SIZE, join=True)
+        print(f"✅ Completed training {model_type}")
+        
+        # Run evaluation
+        print(f"🔍 Evaluating {model_type} model...")
+        ddp_eval(config)
+        print(f"✅ Completed evaluation {model_type}")
+    
+    # Create comparison plot of token utilizations
+    create_token_comparison_plot()
 
-
-if __name__ == "__main__":
-    main()
+def create_token_comparison_plot():
+    """Create a comparison plot of token utilization across different model sizes"""
+    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+    model_configs = [
+        ("new", "2048 tokens"), 
+        ("new_medium", "4 experts, 32 capacity"), 
+        ("new_large", "8 experts, 64 capacity")
+    ]
+    
+    for i, (model_name, description) in enumerate(model_configs):
+        plot_path = os.path.join(PLOT_DIR, f"token_usage_{model_name}.png")
+        if os.path.exists(plot_path):
+            axes[i].text(0.5, 0.5, f'{model_name}\n{description}\nSee individual plot', 
+                        ha='center', va='center', transform=axes[i].transAxes, fontsize=12)
+        else:
+            axes[i].text(0.5, 0.5, f'{model_name}\n{description}\nNot trained yet', 
+                        ha='center', va='center', transform=axes[i].transAxes, fontsize=12)
+        axes[i].set_title(f'{model_name.replace("_", " ").title()}\n{description}')
+        axes[i].grid(True, alpha=0.3)
+    
+    plt.suptitle('Model Architecture Comparison: Standard vs MOE', fontsize=16)
+    plt.tight_layout()
+    plt.savefig(os.path.join(PLOT_DIR, "model_comparison_overview.png"), dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"📊 Model comparison overview saved to {os.path.join(PLOT_DIR, 'model_comparison_overview.png')}")

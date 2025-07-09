@@ -10,7 +10,7 @@ from torch.cuda.amp import GradScaler, autocast
 import wandb
 
 PLOT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                        "plot", "training_plots")
+                        "plot", "moe_training_plots")
 os.makedirs(PLOT_DIR, exist_ok=True)
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -20,87 +20,45 @@ from plot.plot import (
     plot_difference,
 )
 
-TRAIN_TYPE = "MOE_large"
+TRAIN_TYPE = "MOE_med"  # Options: "MOE_med", "MOE_large"
 WORLD_SIZE = 4
 
-CONFIGS = {
-    "new": {
-        "batch_size": 512,
-        "num_epochs": 40,
-        "learning_rate": 2e-4,
-        "start": 50,
-        "end": 60,
-        "vq_kwargs": {"num_codes": 2048, "beta": 0.25, "affine_lr": 0.0,
-                      "sync_nu": 2, "replace_freq": 20, "dim": -1},
-        "checkpoint_dir": "checkpoints/all_checkpoints_vqvae_normformer_flash",
-    },
+MOE_CONFIGS = {
     "MOE_med": {
         "batch_size": 512,
-        "num_epochs": 20,
-        "learning_rate": 2e-4,
-        "start": 50,
-        "end": 60,
-        "vq_kwargs": {"num_codes": 4096, "beta": 0.25, "affine_lr": 0.0,
-                      "sync_nu": 2, "replace_freq": 20, "dim": -1},
-        "checkpoint_dir": "checkpoints/all_checkpoints_vqvae_moe_med",
+        "num_epochs": 21,
+        "learning_rate": 1e-4,
+        "start": 20,
+        "end": 30,
+        "vq_kwargs": {"num_codes": 4096, "beta": 0.45, "affine_lr": 1.0,
+                      "sync_nu": 2, "replace_freq": 3, "dim": -1},
+        "checkpoint_dir": "checkpoints/moe_checkpoints_vqvae_moe_med",
     },
     "MOE_large": {
         "batch_size": 512,
-        "num_epochs": 10,
-        "learning_rate": 1e-4,
+        "num_epochs": 15,
+        "learning_rate": 5e-5,
         "start": 50,
         "end": 60,
         "vq_kwargs": {"num_codes": 8192, "beta": 0.8, "affine_lr": 0.0,
                       "sync_nu": 5, "replace_freq": 5, "dim": -1},
-        "checkpoint_dir": "checkpoints/all_checkpoints_vqvae_moe_large",
-    },
-    "masked": {
-        "batch_size": 512,
-        "num_epochs": 40,
-        "learning_rate": 2e-4,
-        "start": 20,
-        "end": 30,
-        "vq_kwargs": {"num_codes": 2048, "beta": 0.25, "affine_lr": 0.0,
-                      "sync_nu": 2, "replace_freq": 20, "dim": -1},
-        "checkpoint_dir": "checkpoints/all_checkpoints_vqvae_normformer_flash_masked",
-    },
-    "particle": {
-        "batch_size": 512,
-        "num_epochs": 10,
-        "learning_rate": 2e-4,
-        "start": 10,
-        "end": 20,
-        "vq_kwargs": {"num_codes": 2048, "beta": 0.25, "affine_lr": 0.0,
-                      "sync_nu": 2, "replace_freq": 20, "dim": -1},
-        "checkpoint_dir": "checkpoints/all_checkpoints_vqvae_normformer_new",
+        "checkpoint_dir": "checkpoints/moe_checkpoints_vqvae_moe_large",
     },
 }
 
-
 LABELS = [
-    "HToBB",
-    "HToCC",
-    "HToGG",
-    "HToWW4Q",
-    "HToWW2Q1L",
-    "ZToQQ",
-    "WToQQ",
-    "TTBar",
-    "TTBarLep",
-    "ZJetsToNuNu",
+    "HToBB", "HToCC", "HToGG", "HToWW4Q", "HToWW2Q1L",
+    "ZToQQ", "WToQQ", "TTBar", "TTBarLep", "ZJetsToNuNu",
 ]
-
 
 def setup(rank: int, world_size: int) -> None:
     os.environ.setdefault("MASTER_ADDR", "localhost")
-    os.environ.setdefault("MASTER_PORT", "12355")
+    os.environ.setdefault("MASTER_PORT", "12356")  # Different port for MOE training
     dist.init_process_group("nccl", rank=rank, world_size=world_size)
     torch.cuda.set_device(rank)
 
-
 def cleanup() -> None:
     dist.destroy_process_group()
-
 
 def compute_global_stats(dataset, batch_size, log_pt=False, use_mask=False):
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
@@ -128,12 +86,8 @@ def compute_global_stats(dataset, batch_size, log_pt=False, use_mask=False):
     std = flat.std(dim=0) + 1e-6
     return mean, std
 
-
 def load_all_labels_dataset(start: int, end: int, use_mask: bool):
-    if use_mask:
-        from dataloader.masked_dataloader import load_jetclass_label_as_dataset
-    else:
-        from dataloader.dataloader import load_jetclass_label_as_dataset
+    from dataloader.dataloader import load_jetclass_label_as_dataset
 
     datasets = []
     for lbl in LABELS:
@@ -149,21 +103,17 @@ def load_all_labels_dataset(start: int, end: int, use_mask: bool):
     x_parts = torch.cat([d.tensors[0] for d in datasets], dim=0)
     x_jets = torch.cat([d.tensors[1] for d in datasets], dim=0)
     y = torch.cat([d.tensors[2] for d in datasets], dim=0)
-    if use_mask:
-        masks = torch.cat([d.tensors[3] for d in datasets], dim=0)
-        return TensorDataset(x_parts, x_jets, y, masks)
     return TensorDataset(x_parts, x_jets, y)
 
-
-def ddp_train(rank: int, world_size: int, config: dict) -> None:
+def ddp_train_moe(rank: int, world_size: int, config: dict) -> None:
     setup(rank, world_size)
     device = torch.device(f"cuda:{rank}")
 
     # Initialize wandb only on rank 0
     if rank == 0:
         wandb.init(
-            project="hep-models-vqvae",
-            name=f"train_{config['type']}_{config['start']}_{config['end']}",
+            project="hep-models-moe",
+            name=f"moe_{config['type']}_{config['start']}_{config['end']}",
             config={
                 "batch_size": config["batch_size"],
                 "num_epochs": config["num_epochs"],
@@ -175,26 +125,11 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
             }
         )
 
-    if config["type"] == "masked":
-        dataset = load_all_labels_dataset(config["start"], config["end"], True)
-        use_mask = True
-        log_pt = True
-        model_module = __import__("models.NormFormer_Flash", fromlist=["VQVAENormFormer"])
-    elif config["type"] == "new":
-        dataset = load_all_labels_dataset(config["start"], config["end"], False)
-        use_mask = False
-        log_pt = False
-        model_module = __import__("models.NormFormer_Flash", fromlist=["VQVAENormFormer"])
-    elif config["type"] in ["MOE_med", "MOE_large"]:
-        dataset = load_all_labels_dataset(config["start"], config["end"], False)
-        use_mask = False
-        log_pt = False
-        model_module = __import__("models.MOE", fromlist=["VQVAENormFormer"])
-    else:
-        dataset = load_all_labels_dataset(config["start"], config["end"], False)
-        use_mask = False
-        log_pt = False
-        model_module = __import__("models.NormFormer", fromlist=["VQVAENormFormer"])
+    # Load MOE model
+    dataset = load_all_labels_dataset(config["start"], config["end"], False)
+    use_mask = False
+    log_pt = False
+    model_module = __import__("models.MOE", fromlist=["VQVAENormFormer"])
 
     sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=True)
     dataloader = DataLoader(dataset, batch_size=config["batch_size"], sampler=sampler)
@@ -211,7 +146,7 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
     mean = mean.to(device)
     std = std.to(device)
 
-    # Create model - same parameters for all types
+    # Create MOE model
     model = model_module.VQVAENormFormer(
         input_dim=3,
         latent_dim=128,
@@ -221,7 +156,7 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
         vq_kwargs=config["vq_kwargs"],
     ).to(device)
 
-    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[rank],find_unused_parameters=True)
+    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[rank], find_unused_parameters=True)
 
     optimizer = optim.Adam(model.parameters(), lr=config["learning_rate"], betas=(0.9, 0.95))
     recon_loss_fn = nn.MSELoss(reduction="none")
@@ -232,7 +167,7 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
     # Load most recent checkpoint
     start_epoch = 0
     if rank == 0:
-        ckpts = [f for f in os.listdir(config["checkpoint_dir"]) if f.startswith("vqvae_epoch_") and f.endswith(".pth")]
+        ckpts = [f for f in os.listdir(config["checkpoint_dir"]) if f.startswith("moe_epoch_") and f.endswith(".pth")]
         if ckpts:
             latest = max(ckpts, key=lambda x: int(x.split("_")[-1].split(".")[0]))
             checkpoint_path = os.path.join(config["checkpoint_dir"], latest)
@@ -240,9 +175,9 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
             model.module.load_state_dict(checkpoint["model_state"])
             optimizer.load_state_dict(checkpoint["optimizer_state"])
             start_epoch = checkpoint["epoch"]
-            print(f"🔄 Loaded checkpoint from {checkpoint_path} (epoch {start_epoch})")
+            print(f"🔄 Loaded MOE checkpoint from {checkpoint_path} (epoch {start_epoch})")
         else:
-            print("🆕 No checkpoint found, starting from scratch")
+            print("🆕 No MOE checkpoint found, starting from scratch")
     
     # Broadcast start_epoch to all processes
     start_epoch_tensor = torch.tensor(start_epoch, device=device)
@@ -250,21 +185,21 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
     start_epoch = start_epoch_tensor.item()
 
     if rank == 0:
-        print(f"🚀 Training from epoch {start_epoch + 1} to {config['num_epochs']}")
+        print(f"🚀 MOE Training from epoch {start_epoch + 1} to {config['num_epochs']}")
         print(f"📊 Dataset size: {len(dataset)}")
         print(f"🔢 Total batches per epoch: {len(dataloader)}")
 
-    # Fix: Check if we need to train at all
+    # Check if we need to train at all
     if start_epoch >= config["num_epochs"]:
         if rank == 0:
-            print(f"⚠️  Training already completed! start_epoch ({start_epoch}) >= num_epochs ({config['num_epochs']})")
+            print(f"⚠️  MOE Training already completed! start_epoch ({start_epoch}) >= num_epochs ({config['num_epochs']})")
             wandb.finish()
         cleanup()
         return
 
     for epoch in range(start_epoch, config["num_epochs"]):
         if rank == 0:
-            print(f"🔄 Starting epoch {epoch + 1}/{config['num_epochs']}")
+            print(f"🔄 Starting MOE epoch {epoch + 1}/{config['num_epochs']}")
         
         sampler.set_epoch(epoch)
         model.train()
@@ -277,37 +212,27 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
         for batch_idx, batch in enumerate(dataloader):
             batch_count += 1
             
-            if use_mask:
-                x_particles, _, _, mask = [b.to(device) for b in batch]
-            else:
-                x_particles, _, _ = [b.to(device) for b in batch]
-                mask = None
+            x_particles, _, _ = [b.to(device) for b in batch]
             x_particles = x_particles.transpose(1, 2)
-            if log_pt:
-                x_particles[:, :, 0] = torch.log(x_particles[:, :, 0] + 1e-6)
             x_norm = (x_particles - mean) / std
 
             optimizer.zero_grad()
             with autocast():
-                out, loss_dict = model(x_norm, mask=mask) if mask is not None else model(x_norm)
+                out, loss_dict = model(x_norm)
+                r_loss = recon_loss_fn(out, x_norm).mean()
 
-                if mask is not None:
-                    diff = (out - x_norm) ** 2
-                    r_loss = (diff * mask.unsqueeze(-1)).sum() / mask.sum()
-                else:
-                    r_loss = recon_loss_fn(out, x_norm).mean()
-
-                # Safely handle dict vs tensor loss_dict
+                # Safely handle dict vs tensor loss_dict for MOE
                 if isinstance(loss_dict, dict):
-                    vq_loss_val = loss_dict.get("vq_loss", torch.tensor(0.0, device=device))
+                    vq_loss_val = loss_dict.get("vq_loss", loss_dict.get("loss", torch.tensor(0.0, device=device)))
                     aux_loss_val = loss_dict.get("aux_loss", torch.tensor(0.0, device=device))
                     total_latent_loss = loss_dict.get("total_loss", vq_loss_val + 0.01 * aux_loss_val)
                 else:
-                    vq_loss_val = torch.tensor(0.0, device=device)
+                    vq_loss_val = loss_dict
                     aux_loss_val = torch.tensor(0.0, device=device)
-                    total_latent_loss = loss_dict  # Assume tensor loss
+                    total_latent_loss = loss_dict
 
                 loss = r_loss + total_latent_loss
+            
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
@@ -317,9 +242,9 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
             vq_loss += vq_loss_val.detach()
             aux_loss += aux_loss_val.detach()
 
-            # Log batch metrics every 50 batches (more frequent)
-            if rank == 0 and batch_idx % 50 == 0:
-                print(f"  Batch {batch_idx}/{len(dataloader)} - Loss: {loss.item():.4f}")
+            # Log batch metrics every 25 batches (more frequent for MOE)
+            if rank == 0 and batch_idx % 25 == 0:
+                print(f"  MOE Batch {batch_idx}/{len(dataloader)} - Loss: {loss.item():.4f}")
                 wandb.log({
                     "batch_loss": loss.item(),
                     "batch_recon_loss": r_loss.item(),
@@ -331,7 +256,7 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
                 })
 
         if rank == 0:
-            print(f"✅ Epoch {epoch + 1} completed - Processed {batch_count} batches")
+            print(f"✅ MOE Epoch {epoch + 1} completed - Processed {batch_count} batches")
 
         epoch_loss /= len(dataloader)
         recon_loss /= len(dataloader)
@@ -343,7 +268,7 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
 
         if rank == 0:
             print(
-                f"Epoch {epoch+1}/{config['num_epochs']} - Total: {epoch_loss.item():.4f} | "
+                f"MOE Epoch {epoch+1}/{config['num_epochs']} - Total: {epoch_loss.item():.4f} | "
                 f"Recon: {recon_loss.item():.4f} | VQ: {vq_loss.item():.4f} | Aux: {aux_loss.item():.4f}"
             )
             unique_codes = loss_dict["q"].unique().numel() if isinstance(loss_dict, dict) and "q" in loss_dict else 0
@@ -360,9 +285,9 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
                 "learning_rate": optimizer.param_groups[0]['lr']
             })
             
-            # Save checkpoint every 5 epochs or at the end
-            if (epoch + 1) % 5 == 0 or epoch + 1 == config["num_epochs"]:
-                checkpoint_path = os.path.join(config["checkpoint_dir"], f"vqvae_epoch_{epoch+1}.pth")
+            # Save checkpoint every 3 epochs or at the end
+            if (epoch + 1) % 3 == 0 or epoch + 1 == config["num_epochs"]:
+                checkpoint_path = os.path.join(config["checkpoint_dir"], f"moe_epoch_{epoch+1}.pth")
                 torch.save(
                     {
                         "epoch": epoch + 1,
@@ -371,7 +296,7 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
                     },
                     checkpoint_path,
                 )
-                print(f"💾 Saved checkpoint at {checkpoint_path}")
+                print(f"💾 Saved MOE checkpoint at {checkpoint_path}")
                 
                 # Log checkpoint save to wandb
                 wandb.log({"checkpoint_saved": epoch + 1})
@@ -381,40 +306,19 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
 
     cleanup()
 
-
-def ddp_eval(config: dict) -> None:
+def ddp_eval_moe(config: dict) -> None:
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    if config["type"] == "masked":
-        use_mask = True
-        log_pt = True
-        dataset = load_all_labels_dataset(config["start"], config["end"], True)
-        eval_dataset = load_all_labels_dataset(11, 12, True)
-        model_module = __import__("models.NormFormer_Flash", fromlist=["VQVAENormFormer"])
-    elif config["type"] == "new":
-        use_mask = False
-        log_pt = False
-        dataset = load_all_labels_dataset(config["start"], config["end"], False)
-        eval_dataset = load_all_labels_dataset(11, 12, False)
-        model_module = __import__("models.NormFormer_Flash", fromlist=["VQVAENormFormer"])
-    elif config["type"] in ["MOE_med", "MOE_large"]:
-        use_mask = False
-        log_pt = False
-        dataset = load_all_labels_dataset(config["start"], config["end"], False)
-        eval_dataset = load_all_labels_dataset(11, 12, False)
-        model_module = __import__("models.MOE", fromlist=["VQVAENormFormer"])
-    else:
-        use_mask = False
-        log_pt = False
-        dataset = load_all_labels_dataset(config["start"], config["end"], False)
-        eval_dataset = load_all_labels_dataset(11, 12, False)
-        model_module = __import__("models.NormFormer", fromlist=["VQVAENormFormer"])
+    # Load MOE model for evaluation
+    dataset = load_all_labels_dataset(config["start"], config["end"], False)
+    eval_dataset = load_all_labels_dataset(11, 12, False)
+    model_module = __import__("models.MOE", fromlist=["VQVAENormFormer"])
 
-    mean, std = compute_global_stats(dataset, config["batch_size"], log_pt, use_mask)
+    mean, std = compute_global_stats(dataset, config["batch_size"], False, False)
     mean = mean.to(device)
     std = std.to(device)
 
-    # Create model for evaluation - same parameters for all types
+    # Create MOE model for evaluation
     model = model_module.VQVAENormFormer(
         input_dim=3,
         latent_dim=128,
@@ -424,7 +328,7 @@ def ddp_eval(config: dict) -> None:
         vq_kwargs=config["vq_kwargs"],
     ).to(device)
 
-    ckpts = [f for f in os.listdir(config["checkpoint_dir"]) if f.startswith("vqvae_epoch_") and f.endswith(".pth")]
+    ckpts = [f for f in os.listdir(config["checkpoint_dir"]) if f.startswith("moe_epoch_") and f.endswith(".pth")]
     if ckpts:
         latest = max(ckpts, key=lambda x: int(x.split("_")[-1].split(".")[0]))
         checkpoint = torch.load(os.path.join(config["checkpoint_dir"], latest), map_location=device)
@@ -439,33 +343,15 @@ def ddp_eval(config: dict) -> None:
             if i >= 300:
                 break
 
-            if use_mask:
-                x_particles, _, _, mask = [b.to(device) for b in batch]
-            else:
-                x_particles, _, _ = [b.to(device) for b in batch]
-                mask = None
-
+            x_particles, _, _ = [b.to(device) for b in batch]
             x_particles = x_particles.transpose(1, 2)
-            if log_pt:
-                x_particles[:, :, 0] = torch.log(x_particles[:, :, 0] + 1e-6)
             x_norm = (x_particles - mean) / std
 
-            if mask is not None:
-                out, _ = model(x_norm, mask=mask)
-            else:
-                out, _ = model(x_norm)
-
+            out, _ = model(x_norm)
             out_denorm = out * std + mean
-            if log_pt:
-                out_denorm[:, :, 0] = torch.exp(out_denorm[:, :, 0]) - 1e-6
-                x_particles[:, :, 0] = torch.exp(x_particles[:, :, 0]) - 1e-6
 
-            if mask is not None:
-                orig_jet = reconstruct_jet_features_from_particles(x_particles * mask.unsqueeze(-1))
-                recon_jet = reconstruct_jet_features_from_particles(out_denorm * mask.unsqueeze(-1))
-            else:
-                orig_jet = reconstruct_jet_features_from_particles(x_particles)
-                recon_jet = reconstruct_jet_features_from_particles(out_denorm)
+            orig_jet = reconstruct_jet_features_from_particles(x_particles)
+            recon_jet = reconstruct_jet_features_from_particles(out_denorm)
 
             all_orig_jets.append(orig_jet)
             all_recon_jets.append(recon_jet)
@@ -475,22 +361,21 @@ def ddp_eval(config: dict) -> None:
 
     plot_tensor_jet_features(
         [all_orig_jets, all_recon_jets],
-        labels=("Original", "Reconstructed"),
-        filename=os.path.join(PLOT_DIR, "jet_recon_overlay_ddp_all.png"),
+        labels=("Original", f"MOE {config['type']} Reconstructed"),
+        filename=os.path.join(PLOT_DIR, f"moe_{config['type']}_recon_overlay.png"),
     )
     plot_difference(
         all_orig_jets,
         all_recon_jets,
-        filename=os.path.join(PLOT_DIR, "jet_feature_difference_ddp_all.png"),
+        filename=os.path.join(PLOT_DIR, f"moe_{config['type']}_difference.png"),
     )
 
-
 def main() -> None:
-    config = CONFIGS[TRAIN_TYPE].copy()
+    config = MOE_CONFIGS[TRAIN_TYPE].copy()
     config["type"] = TRAIN_TYPE
-    mp.spawn(ddp_train, args=(WORLD_SIZE, config), nprocs=WORLD_SIZE, join=True)
-    ddp_eval(config)
-
+    print(f"🔥 Starting MOE training for {TRAIN_TYPE}")
+    mp.spawn(ddp_train_moe, args=(WORLD_SIZE, config), nprocs=WORLD_SIZE, join=True)
+    ddp_eval_moe(config)
 
 if __name__ == "__main__":
     main()

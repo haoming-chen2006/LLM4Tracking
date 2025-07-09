@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
+import numpy as np
 
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -18,7 +19,8 @@ PLOT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__
                         "plot", "checkpoint_comparison")
 os.makedirs(PLOT_DIR, exist_ok=True)
 
-TRAIN_TYPE = "new"  # Change this as needed
+TRAIN_TYPE = "MOE_med"  # Change this as needed
+CHECKPOINT_EPOCH = "latest"  # Change to specific epoch number or "latest"
 
 CONFIGS = {
     "new": {
@@ -26,6 +28,18 @@ CONFIGS = {
         "checkpoint_dir": "checkpoints/all_checkpoints_vqvae_normformer_flash",
         "vq_kwargs": {"num_codes": 2048, "beta": 0.25, "affine_lr": 0.0,
                       "sync_nu": 2, "replace_freq": 20, "dim": -1},
+    },
+    "MOE_med": {
+        "batch_size": 512,
+        "checkpoint_dir": "checkpoints/moe_checkpoints_vqvae_moe_med",
+        "vq_kwargs": {"num_codes": 4096, "beta": 0.4, "affine_lr": 0.0,
+                      "sync_nu": 3, "replace_freq": 10, "dim": -1},
+    },
+    "MOE_large": {
+        "batch_size": 512,
+        "checkpoint_dir": "checkpoints/all_checkpoints_vqvae_moe_large",
+        "vq_kwargs": {"num_codes": 8192, "beta": 0.4, "affine_lr": 0.0,
+                      "sync_nu": 5, "replace_freq": 10, "dim": -1},
     },
     "masked": {
         "batch_size": 512,
@@ -115,11 +129,16 @@ def load_model_and_checkpoint(config, checkpoint_path, device):
         use_mask = False
         log_pt = False
         model_module = __import__("models.NormFormer_Flash", fromlist=["VQVAENormFormer"])
+    elif config["type"] in ["MOE_med", "MOE_large"]:
+        use_mask = False
+        log_pt = False
+        model_module = __import__("models.MOE", fromlist=["VQVAENormFormer"])
     else:
         use_mask = False
         log_pt = False
         model_module = __import__("models.NormFormer", fromlist=["VQVAENormFormer"])
 
+    # Create model - same parameters for all types
     model = model_module.VQVAENormFormer(
         input_dim=3,
         latent_dim=128,
@@ -254,12 +273,166 @@ def evaluate_model_all_labels(model, mean, std, use_mask, log_pt, device, start=
     # Concatenate all labels
     return torch.cat(all_orig_jets, dim=0), torch.cat(all_recon_jets, dim=0)
 
+def plot_token_usage_histogram(token_counts, num_codes, model_name, save_path):
+    """Plot histogram of unique token usage"""
+    plt.figure(figsize=(12, 8))
+    
+    # Get unique tokens and their counts
+    unique_tokens, counts = torch.unique(token_counts, return_counts=True)
+    unique_tokens = unique_tokens.cpu().numpy()
+    counts = counts.cpu().numpy()
+    
+    # Create histogram of token usage frequency
+    plt.subplot(2, 2, 1)
+    plt.hist(counts, bins=50, alpha=0.7, edgecolor='black', color='skyblue')
+    plt.xlabel('Usage frequency')
+    plt.ylabel('Number of tokens')
+    plt.title(f'Token Usage Frequency Distribution')
+    plt.grid(True, alpha=0.3)
+    
+    # Plot token utilization across vocabulary
+    plt.subplot(2, 2, 2)
+    all_token_usage = np.zeros(num_codes)
+    all_token_usage[unique_tokens] = counts
+    used_mask = all_token_usage > 0
+    
+    plt.bar(np.arange(num_codes)[used_mask], all_token_usage[used_mask], 
+            alpha=0.7, width=max(1, num_codes//1000), color='lightcoral')
+    plt.xlabel('Token ID')
+    plt.ylabel('Usage count')
+    plt.title(f'Token Utilization Across Vocabulary')
+    plt.grid(True, alpha=0.3)
+    
+    # Cumulative usage plot
+    plt.subplot(2, 2, 3)
+    sorted_counts = np.sort(counts)[::-1]  # Sort in descending order
+    cumulative_usage = np.cumsum(sorted_counts) / np.sum(sorted_counts)
+    plt.plot(range(len(sorted_counts)), cumulative_usage, linewidth=2, color='green')
+    plt.xlabel('Token rank (by usage)')
+    plt.ylabel('Cumulative usage fraction')
+    plt.title('Cumulative Token Usage')
+    plt.grid(True, alpha=0.3)
+    
+    # Summary statistics
+    plt.subplot(2, 2, 4)
+    total_tokens = len(unique_tokens)
+    utilization_rate = total_tokens / num_codes * 100
+    
+    stats_text = f"""
+    Model: {model_name}
+    Total vocabulary: {num_codes:,}
+    Unique tokens used: {total_tokens:,}
+    Utilization rate: {utilization_rate:.1f}%
+    
+    Most used token: {counts.max():,} times
+    Least used token: {counts.min():,} times
+    Average usage: {counts.mean():.1f} times
+    """
+    
+    plt.text(0.1, 0.5, stats_text, transform=plt.gca().transAxes, 
+             fontsize=10, verticalalignment='center',
+             bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray", alpha=0.8))
+    plt.axis('off')
+    
+    plt.suptitle(f'Token Analysis: {model_name}', fontsize=14, fontweight='bold')
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    print(f"📊 Token histogram saved: {save_path}")
+    print(f"🎯 Utilization: {total_tokens}/{num_codes} tokens ({utilization_rate:.1f}%)")
+    return total_tokens, utilization_rate
+
+def evaluate_model_with_tokens(model, mean, std, use_mask, log_pt, device, start=10, end=11, batch_size=512):
+    """Evaluate model and collect both reconstructions and token usage"""
+    all_orig_jets = []
+    all_recon_jets = []
+    all_tokens = []
+    
+    for label in LABELS:
+        try:
+            if use_mask:
+                from dataloader.masked_dataloader import load_jetclass_label_as_tensor
+            else:
+                from dataloader.dataloader import load_jetclass_label_as_tensor
+            
+            print(f"🔄 Processing {label}...")
+            dataloader = load_jetclass_label_as_tensor(label=label, start=start, end=end, batch_size=batch_size)
+            
+            label_orig_jets = []
+            label_recon_jets = []
+            label_tokens = []
+            
+            with torch.no_grad():
+                for i, batch in enumerate(dataloader):
+                    if i >= 50:  # Limit batches per label
+                        break
+
+                    if use_mask:
+                        x_particles, _, _, mask = [b.to(device) for b in batch]
+                    else:
+                        x_particles, _, _ = [b.to(device) for b in batch]
+                        mask = None
+                    
+                    x_particles = x_particles.transpose(1, 2)
+                    
+                    if log_pt:
+                        x_particles[:, :, 0] = torch.log(x_particles[:, :, 0] + 1e-6)
+                    x_norm = (x_particles - mean) / std
+
+                    # Get model reconstruction and tokens
+                    if mask is not None:
+                        out, loss_dict = model(x_norm, mask=mask)
+                    else:
+                        out, loss_dict = model(x_norm)
+                    
+                    # Collect tokens
+                    label_tokens.append(loss_dict["q"].detach())
+
+                    # Denormalize output
+                    out_denorm = out * std + mean
+                    if log_pt:
+                        out_denorm[:, :, 0] = torch.exp(out_denorm[:, :, 0]) - 1e-6
+                        x_particles[:, :, 0] = torch.exp(x_particles[:, :, 0]) - 1e-6
+
+                    # Reconstruct jet features from particles
+                    if mask is not None:
+                        orig_particles_masked = x_particles * mask.unsqueeze(-1)
+                        recon_particles_masked = out_denorm * mask.unsqueeze(-1)
+                        
+                        orig_jet = reconstruct_jet_features_from_particles(orig_particles_masked)
+                        recon_jet = reconstruct_jet_features_from_particles(recon_particles_masked)
+                    else:
+                        orig_jet = reconstruct_jet_features_from_particles(x_particles)
+                        recon_jet = reconstruct_jet_features_from_particles(out_denorm)
+
+                    label_orig_jets.append(orig_jet)
+                    label_recon_jets.append(recon_jet)
+            
+            if label_orig_jets:
+                all_orig_jets.append(torch.cat(label_orig_jets, dim=0))
+                all_recon_jets.append(torch.cat(label_recon_jets, dim=0))
+                all_tokens.append(torch.cat(label_tokens, dim=0))
+                print(f"✅ {label}: {len(torch.cat(label_orig_jets, dim=0))} jets processed")
+            
+        except Exception as e:
+            print(f"❌ Failed to process {label}: {e}")
+            continue
+    
+    if not all_orig_jets:
+        raise RuntimeError("No data processed for any label")
+    
+    # Concatenate all results
+    return (torch.cat(all_orig_jets, dim=0), 
+            torch.cat(all_recon_jets, dim=0), 
+            torch.cat(all_tokens, dim=0))
+
 def main():
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     config = CONFIGS[TRAIN_TYPE].copy()
     config["type"] = TRAIN_TYPE
     
-    print(f"🔍 Comparing checkpoints for {TRAIN_TYPE} training")
+    print(f"🔍 Evaluating {TRAIN_TYPE} model checkpoint")
     
     # Find checkpoints
     ckpts = [f for f in os.listdir(config["checkpoint_dir"]) 
@@ -272,18 +445,21 @@ def main():
     # Sort checkpoints by epoch number
     ckpts.sort(key=lambda x: int(x.split("_")[-1].split(".")[0]))
     
-    if len(ckpts) < 2:
-        print(f"⚠️  Only {len(ckpts)} checkpoint(s) found, need at least 2 for comparison")
-        return
+    # Select checkpoint based on CHECKPOINT_EPOCH setting
+    if CHECKPOINT_EPOCH == "latest":
+        selected_ckpt = ckpts[-1]
+    else:
+        # Look for specific epoch
+        target_file = f"vqvae_epoch_{CHECKPOINT_EPOCH}.pth"
+        if target_file in ckpts:
+            selected_ckpt = target_file
+        else:
+            print(f"❌ Checkpoint for epoch {CHECKPOINT_EPOCH} not found!")
+            print(f"Available checkpoints: {[int(f.split('_')[-1].split('.')[0]) for f in ckpts]}")
+            return
     
-    # Use the most recent 2 checkpoints
-    latest_ckpt = ckpts[-1]
-    earlier_ckpt = ckpts[-2]  # Second most recent
-    
-    latest_epoch = int(latest_ckpt.split("_")[-1].split(".")[0])
-    earlier_epoch = int(earlier_ckpt.split("_")[-1].split(".")[0])
-    
-    print(f"📊 Comparing epoch {earlier_epoch} vs epoch {latest_epoch}")
+    selected_epoch = int(selected_ckpt.split("_")[-1].split(".")[0])
+    print(f"📊 Evaluating checkpoint: {selected_ckpt} (epoch {selected_epoch})")
     print(f"📁 Available checkpoints: {len(ckpts)} total")
     
     # Load evaluation dataset (all labels, parts 10-11)
@@ -295,6 +471,9 @@ def main():
     if config["type"] == "masked":
         train_dataset = load_all_labels_dataset(20, 21, True)  # Load only file 20
         log_pt = True
+    elif config["type"] in ["MOE_med", "MOE_large"]:
+        train_dataset = load_all_labels_dataset(20, 21, False)  # Load only file 20
+        log_pt = False
     else:
         train_dataset = load_all_labels_dataset(10, 11, False)  # Load only file 10
         log_pt = False
@@ -302,53 +481,59 @@ def main():
     mean, std = compute_global_stats(train_dataset, config["batch_size"], log_pt, use_mask)
     mean, std = mean.to(device), std.to(device)
     
-    # Load and evaluate earlier checkpoint on ALL LABELS
-    print(f"🔄 Loading earlier checkpoint: {earlier_ckpt}")
-    earlier_path = os.path.join(config["checkpoint_dir"], earlier_ckpt)
-    model_earlier, _, _ = load_model_and_checkpoint(config, earlier_path, device)
-    orig_jets, recon_jets_earlier = evaluate_model_all_labels(
-        model_earlier, mean, std, use_mask, log_pt, device, start=10, end=11, batch_size=config["batch_size"]
+    # Load and evaluate selected checkpoint
+    print(f"🔄 Loading checkpoint: {selected_ckpt}")
+    checkpoint_path = os.path.join(config["checkpoint_dir"], selected_ckpt)
+    model, _, _ = load_model_and_checkpoint(config, checkpoint_path, device)
+    
+    # Evaluate model and collect tokens
+    orig_jets, recon_jets, all_tokens = evaluate_model_with_tokens(
+        model, mean, std, use_mask, log_pt, device, start=10, end=11, batch_size=config["batch_size"]
     )
     
-    # Load and evaluate latest checkpoint on ALL LABELS
-    print(f"🔄 Loading latest checkpoint: {latest_ckpt}")
-    latest_path = os.path.join(config["checkpoint_dir"], latest_ckpt)
-    model_latest, _, _ = load_model_and_checkpoint(config, latest_path, device)
-    _, recon_jets_latest = evaluate_model_all_labels(
-        model_latest, mean, std, use_mask, log_pt, device, start=10, end=11, batch_size=config["batch_size"]
-    )
+    # Create plots
+    print("📈 Creating plots...")
     
-    # Create comparison plots
-    print("📈 Creating comparison plots...")
+    # Create model-specific plot descriptions
+    model_description = f"{TRAIN_TYPE}"
     
-    # Plot original vs both reconstructions
+    # Plot original vs reconstruction
     plot_tensor_jet_features(
-        [orig_jets, recon_jets_earlier, recon_jets_latest],
-        labels=("Original", f"Epoch {earlier_epoch}", f"Epoch {latest_epoch}"),
-        filename=os.path.join(PLOT_DIR, f"checkpoint_comparison_{TRAIN_TYPE}_all_labels.png"),
+        [orig_jets, recon_jets],
+        labels=("Original", f"Reconstructed {model_description} (Epoch {selected_epoch})"),
+        filename=os.path.join(PLOT_DIR, f"{TRAIN_TYPE}_epoch_{selected_epoch}_reconstruction.png"),
     )
     
-    # Plot differences
+    # Plot reconstruction difference
     plot_difference(
         orig_jets,
-        recon_jets_earlier,
-        filename=os.path.join(PLOT_DIR, f"difference_epoch_{earlier_epoch}_{TRAIN_TYPE}_all_labels.png"),
+        recon_jets,
+        filename=os.path.join(PLOT_DIR, f"{TRAIN_TYPE}_epoch_{selected_epoch}_difference.png"),
     )
     
-    plot_difference(
-        orig_jets,
-        recon_jets_latest,
-        filename=os.path.join(PLOT_DIR, f"difference_epoch_{latest_epoch}_{TRAIN_TYPE}_all_labels.png"),
+    # Plot token usage histogram with model-specific title
+    token_hist_path = os.path.join(PLOT_DIR, f"{TRAIN_TYPE}_epoch_{selected_epoch}_token_usage.png")
+    plot_token_usage_histogram(
+        all_tokens, 
+        config["vq_kwargs"]["num_codes"], 
+        f"{model_description} (Epoch {selected_epoch})",
+        token_hist_path
     )
     
-    # Compare the two reconstructions directly
-    plot_difference(
-        recon_jets_earlier,
-        recon_jets_latest,
-        filename=os.path.join(PLOT_DIR, f"reconstruction_evolution_{earlier_epoch}_to_{latest_epoch}_{TRAIN_TYPE}.png"),
+    print(f"✅ All plots saved to {PLOT_DIR}")
+    print(f"📊 Evaluated on {len(orig_jets)} samples from ALL LABELS (parts 10-11)")
+
+if __name__ == "__main__":
+    main()
+    token_hist_path = os.path.join(PLOT_DIR, f"{TRAIN_TYPE}_epoch_{selected_epoch}_token_usage.png")
+    plot_token_usage_histogram(
+        all_tokens, 
+        config["vq_kwargs"]["num_codes"], 
+        f"{model_description} (Epoch {selected_epoch})",
+        token_hist_path
     )
     
-    print(f"✅ Plots saved to {PLOT_DIR}")
+    print(f"✅ All plots saved to {PLOT_DIR}")
     print(f"📊 Evaluated on {len(orig_jets)} samples from ALL LABELS (parts 10-11)")
 
 if __name__ == "__main__":
