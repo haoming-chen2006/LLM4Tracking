@@ -37,6 +37,9 @@ class FlashNormformerBlock(nn.Module):
 
         self.num_heads = num_heads
         self.head_dim = input_dim // num_heads
+        
+        # Add assertion to catch dimension mismatches early
+        assert input_dim % num_heads == 0, f"input_dim ({input_dim}) must be divisible by num_heads ({num_heads})"
 
     def forward(self, x, mask=None, return_attn_weights=False):
         B, T, C = x.shape

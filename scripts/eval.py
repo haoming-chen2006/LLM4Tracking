@@ -5,7 +5,8 @@ import torch
 import models.NormFormer as vqvae
 from plot.plot import plot_tensor_jet_features, reconstruct_jet_features_from_particles
 from dataloader.dataloader import load_jetclass_label_as_tensor
-
+import numpy as np
+import matplotlib.pyplot as plt  # Fixed import - pyplot instead of matplotlib
 # Directory to store plots
 PLOT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                         "plot", "training_plots")
@@ -60,6 +61,7 @@ all_orig_jets, all_recon_jets = [], []
 dataloader_eval = load_jetclass_label_as_tensor(label="HToBB", start=15, end=16, batch_size=batch_size)
 
 with torch.no_grad():
+    all_codes = []
     for i, (x_particles, _, _) in enumerate(dataloader_eval):
         if i >= 300:
             break
@@ -71,8 +73,10 @@ with torch.no_grad():
         x_particles_normed = (x_particles - global_mean) / global_std
 
         # Model forward
-        x_recon_normed, _ = model(x_particles_normed)
-
+        x_recon_normed, loss_dict = model(x_particles_normed)
+        unique_codes = loss_dict["q"]
+        codes = unique_codes.view(-1).cpu().numpy()
+        all_codes.append(codes)
         # De-normalize
         x_particles_denorm = x_particles_normed * global_std + global_mean
         x_recon_denorm = x_recon_normed * global_std + global_mean
@@ -86,7 +90,16 @@ with torch.no_grad():
 
 all_orig_jets = torch.cat(all_orig_jets, dim=0)
 all_recon_jets = torch.cat(all_recon_jets, dim=0)
-
+all_codes_flat = np.concatenate(all_codes, axis=0) 
+plt.figure(figsize=(10, 4))
+plt.hist(all_codes_flat, bins=range(model.vqlayer.num_codes + 1))
+plt.xlabel("Codebook Index")
+plt.ylabel("Usage Count")
+plt.title("Histogram of VQ Codebook Usage")
+plt.grid(True)
+plt.tight_layout()
+plt.savefig(os.path.join(PLOT_DIR, "codebook_usage_hist.png"))
+plt.show()
 plot_tensor_jet_features(
     [all_orig_jets, all_recon_jets],
     labels=("Original", "Reconstructed"),

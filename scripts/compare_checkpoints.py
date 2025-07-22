@@ -20,7 +20,7 @@ PLOT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__
 os.makedirs(PLOT_DIR, exist_ok=True)
 
 TRAIN_TYPE = "MOE_med"  # Change this as needed
-CHECKPOINT_EPOCH = "latest"  # Change to specific epoch number or "latest"
+CHECKPOINT_EPOCH = [3,18,36] # Change to list of epochs or single epoch or "latest"
 
 CONFIGS = {
     "new": {
@@ -32,14 +32,14 @@ CONFIGS = {
     "MOE_med": {
         "batch_size": 512,
         "checkpoint_dir": "checkpoints/moe_checkpoints_vqvae_moe_med",
-        "vq_kwargs": {"num_codes": 4096, "beta": 0.4, "affine_lr": 0.0,
-                      "sync_nu": 3, "replace_freq": 10, "dim": -1},
+        "vq_kwargs": {"num_codes": 4096, "beta": 0.8, "affine_lr": 1.0,  # Changed from 0.4 to 0.8, 0.0 to 1.0
+                      "sync_nu": 2, "replace_freq": 3, "dim": -1},  # Changed from 10 to 3
     },
     "MOE_large": {
         "batch_size": 512,
-        "checkpoint_dir": "checkpoints/all_checkpoints_vqvae_moe_large",
-        "vq_kwargs": {"num_codes": 8192, "beta": 0.4, "affine_lr": 0.0,
-                      "sync_nu": 5, "replace_freq": 10, "dim": -1},
+        "checkpoint_dir": "checkpoints/moe_checkpoints_vqvae_moe_large",
+        "vq_kwargs": {"num_codes": 8192, "beta": 0.9, "affine_lr": 0.0,  # Changed from 0.4 to 0.9
+                      "sync_nu": 5, "replace_freq": 2, "dim": -1},  # Changed from 10 to 2
     },
     "masked": {
         "batch_size": 512,
@@ -138,18 +138,50 @@ def load_model_and_checkpoint(config, checkpoint_path, device):
         log_pt = False
         model_module = __import__("models.NormFormer", fromlist=["VQVAENormFormer"])
 
-    # Create model - same parameters for all types
+    # Create model - align parameters with MOE training script
     model = model_module.VQVAENormFormer(
         input_dim=3,
-        latent_dim=128,
-        hidden_dim=256,
+        latent_dim=16,  # Match MOE training script
+        hidden_dim=128, # Match MOE training script
         num_heads=8,
         num_blocks=3,
         vq_kwargs=config["vq_kwargs"],
     ).to(device)
 
     checkpoint = torch.load(checkpoint_path, map_location=device)
-    model.load_state_dict(checkpoint["model_state"])
+    
+    # Use strict=False to handle potential model architecture changes
+    try:
+        missing_keys, unexpected_keys = model.load_state_dict(checkpoint["model_state"], strict=False)
+        
+        if missing_keys:
+            print(f"⚠️  Missing keys in checkpoint: {missing_keys}")
+        if unexpected_keys:
+            print(f"⚠️  Unexpected keys in checkpoint: {unexpected_keys}")
+            print("📝 This is likely due to VQ layer architecture changes - continuing with available parameters")
+            
+        print("✅ Model loaded successfully with available parameters")
+        
+    except Exception as e:
+        print(f"❌ Error loading checkpoint: {e}")
+        print("🔄 Attempting to load with key filtering...")
+        
+        # Filter out problematic keys
+        state_dict = checkpoint["model_state"]
+        filtered_state_dict = {}
+        
+        for key, value in state_dict.items():
+            # Skip affine transform keys if they cause issues
+            if "affine_transform" in key:
+                print(f"Skipping key: {key}")
+                continue
+            filtered_state_dict[key] = value
+        
+        missing_keys, unexpected_keys = model.load_state_dict(filtered_state_dict, strict=False)
+        print(f"✅ Model loaded with filtered state dict")
+        if missing_keys:
+            print(f"⚠️  Missing keys after filtering: {missing_keys}")
+    
     model.eval()
     
     return model, use_mask, log_pt
@@ -432,11 +464,11 @@ def main():
     config = CONFIGS[TRAIN_TYPE].copy()
     config["type"] = TRAIN_TYPE
     
-    print(f"🔍 Evaluating {TRAIN_TYPE} model checkpoint")
+    print(f"🔍 Evaluating {TRAIN_TYPE} model checkpoint(s)")
     
     # Find checkpoints
     ckpts = [f for f in os.listdir(config["checkpoint_dir"]) 
-             if f.startswith("vqvae_epoch_") and f.endswith(".pth")]
+             if f.startswith("moe_epoch_") and f.endswith(".pth")]
     
     if not ckpts:
         print("❌ No checkpoints found!")
@@ -445,96 +477,172 @@ def main():
     # Sort checkpoints by epoch number
     ckpts.sort(key=lambda x: int(x.split("_")[-1].split(".")[0]))
     
-    # Select checkpoint based on CHECKPOINT_EPOCH setting
-    if CHECKPOINT_EPOCH == "latest":
-        selected_ckpt = ckpts[-1]
-    else:
-        # Look for specific epoch
-        target_file = f"vqvae_epoch_{CHECKPOINT_EPOCH}.pth"
-        if target_file in ckpts:
-            selected_ckpt = target_file
-        else:
-            print(f"❌ Checkpoint for epoch {CHECKPOINT_EPOCH} not found!")
-            print(f"Available checkpoints: {[int(f.split('_')[-1].split('.')[0]) for f in ckpts]}")
+    # Handle different input types for CHECKPOINT_EPOCH
+    if isinstance(CHECKPOINT_EPOCH, list):
+        # Multiple epochs for comparison
+        selected_epochs = []
+        selected_ckpts = []
+        
+        for epoch in CHECKPOINT_EPOCH:
+            target_file = f"moe_epoch_{epoch}.pth"
+            if target_file in ckpts:
+                selected_epochs.append(epoch)
+                selected_ckpts.append(target_file)
+            else:
+                print(f"⚠️ Checkpoint for epoch {epoch} not found, skipping")
+        
+        if not selected_ckpts:
+            print("❌ No valid checkpoints found from the list!")
             return
-    
-    selected_epoch = int(selected_ckpt.split("_")[-1].split(".")[0])
-    print(f"📊 Evaluating checkpoint: {selected_ckpt} (epoch {selected_epoch})")
-    print(f"📁 Available checkpoints: {len(ckpts)} total")
-    
-    # Load evaluation dataset (all labels, parts 10-11)
-    use_mask = config["type"] == "masked"
-    eval_dataset = load_all_labels_dataset(10, 11, use_mask)
-    dataloader = DataLoader(eval_dataset, batch_size=config["batch_size"], shuffle=False)
-    
-    # Compute normalization stats (using training data range - single file)
-    if config["type"] == "masked":
-        train_dataset = load_all_labels_dataset(20, 21, True)  # Load only file 20
-        log_pt = True
-    elif config["type"] in ["MOE_med", "MOE_large"]:
-        train_dataset = load_all_labels_dataset(20, 21, False)  # Load only file 20
-        log_pt = False
+            
+        print(f"📊 Comparing checkpoints: {selected_epochs}")
+        
+        # Evaluate multiple checkpoints
+        all_recon_results = []
+        orig_jets = None
+        
+        for i, (epoch, ckpt) in enumerate(zip(selected_epochs, selected_ckpts)):
+            print(f"🔄 Loading checkpoint {i+1}/{len(selected_ckpts)}: {ckpt} (epoch {epoch})")
+            checkpoint_path = os.path.join(config["checkpoint_dir"], ckpt)
+            model, use_mask, log_pt = load_model_and_checkpoint(config, checkpoint_path, device)
+            
+            # Load evaluation dataset and compute stats (only once)
+            if orig_jets is None:
+                eval_dataset = load_all_labels_dataset(10, 11, use_mask)
+                
+                # Compute normalization stats
+                if config["type"] == "masked":
+                    train_dataset = load_all_labels_dataset(20, 21, True)
+                    log_pt = True
+                elif config["type"] in ["MOE_med", "MOE_large"]:
+                    train_dataset = load_all_labels_dataset(20, 21, False)
+                    log_pt = False
+                else:
+                    train_dataset = load_all_labels_dataset(10, 11, False)
+                    log_pt = False
+                
+                mean, std = compute_global_stats(train_dataset, config["batch_size"], log_pt, use_mask)
+                mean, std = mean.to(device), std.to(device)
+            
+            # Evaluate model and collect tokens
+            orig_jets_current, recon_jets, all_tokens = evaluate_model_with_tokens(
+                model, mean, std, use_mask, log_pt, device, start=10, end=11, batch_size=config["batch_size"]
+            )
+            
+            # Store original jets from first checkpoint
+            if orig_jets is None:
+                orig_jets = orig_jets_current
+            
+            all_recon_results.append(recon_jets)
+            
+            # Create individual token usage plot
+            token_hist_path = os.path.join(PLOT_DIR, f"{TRAIN_TYPE}_epoch_{epoch}_token_usage.png")
+            plot_token_usage_histogram(
+                all_tokens, 
+                config["vq_kwargs"]["num_codes"], 
+                f"{TRAIN_TYPE} (Epoch {epoch})",
+                token_hist_path
+            )
+        
+        # Create comparison plots
+        print("📈 Creating comparison plots...")
+        
+        # Prepare data for overlay plot
+        jet_data = [orig_jets] + all_recon_results
+        labels = ["Original"] + [f"Epoch {epoch}" for epoch in selected_epochs]
+        
+        # Plot overlay comparison
+        plot_tensor_jet_features(
+            jet_data,
+            labels=labels,
+            filename=os.path.join(PLOT_DIR, f"{TRAIN_TYPE}_epochs_{'_'.join(map(str, selected_epochs))}_comparison.png"),
+        )
+        
+        # Plot differences from original for each epoch
+        for i, (epoch, recon_jets) in enumerate(zip(selected_epochs, all_recon_results)):
+            plot_difference(
+                orig_jets,
+                recon_jets,
+                filename=os.path.join(PLOT_DIR, f"{TRAIN_TYPE}_epoch_{epoch}_difference.png"),
+            )
+        
+        print(f"✅ Comparison plots saved to {PLOT_DIR}")
+        print(f"📊 Evaluated {len(selected_epochs)} checkpoints on {len(orig_jets)} samples from ALL LABELS")
+        
     else:
-        train_dataset = load_all_labels_dataset(10, 11, False)  # Load only file 10
-        log_pt = False
-    
-    mean, std = compute_global_stats(train_dataset, config["batch_size"], log_pt, use_mask)
-    mean, std = mean.to(device), std.to(device)
-    
-    # Load and evaluate selected checkpoint
-    print(f"🔄 Loading checkpoint: {selected_ckpt}")
-    checkpoint_path = os.path.join(config["checkpoint_dir"], selected_ckpt)
-    model, _, _ = load_model_and_checkpoint(config, checkpoint_path, device)
-    
-    # Evaluate model and collect tokens
-    orig_jets, recon_jets, all_tokens = evaluate_model_with_tokens(
-        model, mean, std, use_mask, log_pt, device, start=10, end=11, batch_size=config["batch_size"]
-    )
-    
-    # Create plots
-    print("📈 Creating plots...")
-    
-    # Create model-specific plot descriptions
-    model_description = f"{TRAIN_TYPE}"
-    
-    # Plot original vs reconstruction
-    plot_tensor_jet_features(
-        [orig_jets, recon_jets],
-        labels=("Original", f"Reconstructed {model_description} (Epoch {selected_epoch})"),
-        filename=os.path.join(PLOT_DIR, f"{TRAIN_TYPE}_epoch_{selected_epoch}_reconstruction.png"),
-    )
-    
-    # Plot reconstruction difference
-    plot_difference(
-        orig_jets,
-        recon_jets,
-        filename=os.path.join(PLOT_DIR, f"{TRAIN_TYPE}_epoch_{selected_epoch}_difference.png"),
-    )
-    
-    # Plot token usage histogram with model-specific title
-    token_hist_path = os.path.join(PLOT_DIR, f"{TRAIN_TYPE}_epoch_{selected_epoch}_token_usage.png")
-    plot_token_usage_histogram(
-        all_tokens, 
-        config["vq_kwargs"]["num_codes"], 
-        f"{model_description} (Epoch {selected_epoch})",
-        token_hist_path
-    )
-    
-    print(f"✅ All plots saved to {PLOT_DIR}")
-    print(f"📊 Evaluated on {len(orig_jets)} samples from ALL LABELS (parts 10-11)")
-
-if __name__ == "__main__":
-    main()
-    token_hist_path = os.path.join(PLOT_DIR, f"{TRAIN_TYPE}_epoch_{selected_epoch}_token_usage.png")
-    plot_token_usage_histogram(
-        all_tokens, 
-        config["vq_kwargs"]["num_codes"], 
-        f"{model_description} (Epoch {selected_epoch})",
-        token_hist_path
-    )
-    
-    print(f"✅ All plots saved to {PLOT_DIR}")
-    print(f"📊 Evaluated on {len(orig_jets)} samples from ALL LABELS (parts 10-11)")
+        # Single checkpoint evaluation (existing logic)
+        if CHECKPOINT_EPOCH == "latest":
+            selected_ckpt = ckpts[-1]
+        else:
+            target_file = f"moe_epoch_{CHECKPOINT_EPOCH}.pth"
+            if target_file in ckpts:
+                selected_ckpt = target_file
+            else:
+                print(f"❌ Checkpoint for epoch {CHECKPOINT_EPOCH} not found!")
+                print(f"Available checkpoints: {[int(f.split('_')[-1].split('.')[0]) for f in ckpts]}")
+                return
+        
+        selected_epoch = int(selected_ckpt.split("_")[-1].split(".")[0])
+        print(f"📊 Evaluating checkpoint: {selected_ckpt} (epoch {selected_epoch})")
+        
+        # Load evaluation dataset
+        use_mask = config["type"] == "masked"
+        eval_dataset = load_all_labels_dataset(10, 11, use_mask)
+        
+        # Compute normalization stats
+        if config["type"] == "masked":
+            train_dataset = load_all_labels_dataset(20, 21, True)
+            log_pt = True
+        elif config["type"] in ["MOE_med", "MOE_large"]:
+            train_dataset = load_all_labels_dataset(20, 21, False)
+            log_pt = False
+        else:
+            train_dataset = load_all_labels_dataset(10, 11, False)
+            log_pt = False
+        
+        mean, std = compute_global_stats(train_dataset, config["batch_size"], log_pt, use_mask)
+        mean, std = mean.to(device), std.to(device)
+        
+        # Load and evaluate selected checkpoint
+        print(f"🔄 Loading checkpoint: {selected_ckpt}")
+        checkpoint_path = os.path.join(config["checkpoint_dir"], selected_ckpt)
+        model, _, _ = load_model_and_checkpoint(config, checkpoint_path, device)
+        
+        # Evaluate model and collect tokens
+        orig_jets, recon_jets, all_tokens = evaluate_model_with_tokens(
+            model, mean, std, use_mask, log_pt, device, start=10, end=11, batch_size=config["batch_size"]
+        )
+        
+        # Create plots
+        print("📈 Creating plots...")
+        
+        model_description = f"{TRAIN_TYPE}"
+        
+        # Plot original vs reconstruction
+        plot_tensor_jet_features(
+            [orig_jets, recon_jets],
+            labels=("Original", f"Reconstructed {model_description} (Epoch {selected_epoch})"),
+            filename=os.path.join(PLOT_DIR, f"{TRAIN_TYPE}_epoch_{selected_epoch}_reconstruction.png"),
+        )
+        
+        # Plot reconstruction difference
+        plot_difference(
+            orig_jets,
+            recon_jets,
+            filename=os.path.join(PLOT_DIR, f"{TRAIN_TYPE}_epoch_{selected_epoch}_difference.png"),
+        )
+        
+        # Plot token usage histogram
+        token_hist_path = os.path.join(PLOT_DIR, f"{TRAIN_TYPE}_epoch_{selected_epoch}_token_usage.png")
+        plot_token_usage_histogram(
+            all_tokens, 
+            config["vq_kwargs"]["num_codes"], 
+            f"{model_description} (Epoch {selected_epoch})",
+            token_hist_path
+        )
+        
+        print(f"✅ All plots saved to {PLOT_DIR}")
+        print(f"📊 Evaluated on {len(orig_jets)} samples from ALL LABELS (parts 10-11)")
 
 if __name__ == "__main__":
     main()

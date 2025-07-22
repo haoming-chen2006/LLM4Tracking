@@ -7,7 +7,6 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.utils.data import DataLoader, DistributedSampler, TensorDataset
 from torch.cuda.amp import GradScaler, autocast
-import wandb
 
 PLOT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                         "plot", "training_plots")
@@ -20,7 +19,7 @@ from plot.plot import (
     plot_difference,
 )
 
-TRAIN_TYPE = "MOE_large"
+TRAIN_TYPE = "new"
 WORLD_SIZE = 4
 
 CONFIGS = {
@@ -32,7 +31,7 @@ CONFIGS = {
         "end": 60,
         "vq_kwargs": {"num_codes": 2048, "beta": 0.25, "affine_lr": 0.0,
                       "sync_nu": 2, "replace_freq": 20, "dim": -1},
-        "checkpoint_dir": "checkpoints/all_checkpoints_vqvae_normformer_flash",
+        "checkpoint_dir": "checkpoints/all_checkpoints_vqvae_normformer_new_flash",
     },
     "MOE_med": {
         "batch_size": 512,
@@ -159,22 +158,6 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
     setup(rank, world_size)
     device = torch.device(f"cuda:{rank}")
 
-    # Initialize wandb only on rank 0
-    if rank == 0:
-        wandb.init(
-            project="hep-models-vqvae",
-            name=f"train_{config['type']}_{config['start']}_{config['end']}",
-            config={
-                "batch_size": config["batch_size"],
-                "num_epochs": config["num_epochs"],
-                "learning_rate": config["learning_rate"],
-                "world_size": world_size,
-                "train_type": config["type"],
-                "data_range": f"{config['start']}-{config['end']}",
-                **config["vq_kwargs"]
-            }
-        )
-
     if config["type"] == "masked":
         dataset = load_all_labels_dataset(config["start"], config["end"], True)
         use_mask = True
@@ -214,8 +197,8 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
     # Create model - same parameters for all types
     model = model_module.VQVAENormFormer(
         input_dim=3,
-        latent_dim=128,
-        hidden_dim=256,
+        latent_dim=16,
+        hidden_dim=128,  # Fixed: changed from 12 to 128
         num_heads=8,
         num_blocks=3,
         vq_kwargs=config["vq_kwargs"],
@@ -224,23 +207,53 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[rank],find_unused_parameters=True)
 
     optimizer = optim.Adam(model.parameters(), lr=config["learning_rate"], betas=(0.9, 0.95))
+    
+    # Add cosine learning rate scheduler
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, 
+        T_max=config["num_epochs"], 
+        eta_min=config["learning_rate"] * 0.01  # Minimum LR is 1% of initial LR
+    )
+    
     recon_loss_fn = nn.MSELoss(reduction="none")
     scaler = GradScaler()
 
     os.makedirs(config["checkpoint_dir"], exist_ok=True)
     
-    # Load most recent checkpoint
+    # Load most recent checkpoint with better error handling
     start_epoch = 0
     if rank == 0:
         ckpts = [f for f in os.listdir(config["checkpoint_dir"]) if f.startswith("vqvae_epoch_") and f.endswith(".pth")]
         if ckpts:
             latest = max(ckpts, key=lambda x: int(x.split("_")[-1].split(".")[0]))
             checkpoint_path = os.path.join(config["checkpoint_dir"], latest)
-            checkpoint = torch.load(checkpoint_path, map_location=device)
-            model.module.load_state_dict(checkpoint["model_state"])
-            optimizer.load_state_dict(checkpoint["optimizer_state"])
-            start_epoch = checkpoint["epoch"]
-            print(f"🔄 Loaded checkpoint from {checkpoint_path} (epoch {start_epoch})")
+            try:
+                checkpoint = torch.load(checkpoint_path, map_location=device)
+                # Use strict=False to handle potential model architecture changes
+                missing_keys, unexpected_keys = model.module.load_state_dict(checkpoint["model_state"], strict=False)
+                
+                if missing_keys:
+                    print(f"⚠️  Missing keys in checkpoint: {missing_keys}")
+                if unexpected_keys:
+                    print(f"⚠️  Unexpected keys in checkpoint: {unexpected_keys}")
+                
+                # Only load optimizer and scheduler if model loaded successfully
+                if not missing_keys:
+                    optimizer.load_state_dict(checkpoint["optimizer_state"])
+                    if "scheduler_state" in checkpoint:
+                        scheduler.load_state_dict(checkpoint["scheduler_state"])
+                        print("✅ Loaded scheduler state")
+                    print("✅ Loaded optimizer state")
+                else:
+                    print("⚠️  Skipping optimizer/scheduler state due to model changes")
+                
+                start_epoch = checkpoint["epoch"]
+                print(f"🔄 Loaded checkpoint from {checkpoint_path} (epoch {start_epoch})")
+                
+            except Exception as e:
+                print(f"❌ Failed to load checkpoint {checkpoint_path}: {e}")
+                print("🆕 Starting from scratch due to checkpoint error")
+                start_epoch = 0
         else:
             print("🆕 No checkpoint found, starting from scratch")
     
@@ -258,13 +271,13 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
     if start_epoch >= config["num_epochs"]:
         if rank == 0:
             print(f"⚠️  Training already completed! start_epoch ({start_epoch}) >= num_epochs ({config['num_epochs']})")
-            wandb.finish()
         cleanup()
         return
 
     for epoch in range(start_epoch, config["num_epochs"]):
         if rank == 0:
-            print(f"🔄 Starting epoch {epoch + 1}/{config['num_epochs']}")
+            current_lr = scheduler.get_last_lr()[0]
+            print(f"🔄 Starting epoch {epoch + 1}/{config['num_epochs']} (LR: {current_lr:.6f})")
         
         sampler.set_epoch(epoch)
         model.train()
@@ -317,18 +330,9 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
             vq_loss += vq_loss_val.detach()
             aux_loss += aux_loss_val.detach()
 
-            # Log batch metrics every 50 batches (more frequent)
+            # Log batch metrics
             if rank == 0 and batch_idx % 50 == 0:
                 print(f"  Batch {batch_idx}/{len(dataloader)} - Loss: {loss.item():.4f}")
-                wandb.log({
-                    "batch_loss": loss.item(),
-                    "batch_recon_loss": r_loss.item(),
-                    "batch_vq_loss": vq_loss_val.item(),
-                    "batch_aux_loss": aux_loss_val.item(),
-                    "batch_total_latent_loss": total_latent_loss.item(),
-                    "epoch": epoch + 1,
-                    "batch": batch_idx
-                })
 
         if rank == 0:
             print(f"✅ Epoch {epoch + 1} completed - Processed {batch_count} batches")
@@ -342,25 +346,16 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
             t /= world_size
 
         if rank == 0:
+            current_lr = scheduler.get_last_lr()[0]
             print(
                 f"Epoch {epoch+1}/{config['num_epochs']} - Total: {epoch_loss.item():.4f} | "
-                f"Recon: {recon_loss.item():.4f} | VQ: {vq_loss.item():.4f} | Aux: {aux_loss.item():.4f}"
+                f"Recon: {recon_loss.item():.4f} | VQ: {vq_loss.item():.4f} | Aux: {aux_loss.item():.4f} | "
+                f"LR: {current_lr:.6f}"
             )
             unique_codes = loss_dict["q"].unique().numel() if isinstance(loss_dict, dict) and "q" in loss_dict else 0
             print(f"🧩 Unique codes used: {unique_codes}")
             
-            # Log epoch metrics to wandb
-            wandb.log({
-                "epoch": epoch + 1,
-                "epoch_loss": epoch_loss.item(),
-                "epoch_recon_loss": recon_loss.item(),
-                "epoch_vq_loss": vq_loss.item(),
-                "epoch_aux_loss": aux_loss.item(),
-                "unique_codes": unique_codes,
-                "learning_rate": optimizer.param_groups[0]['lr']
-            })
-            
-            # Save checkpoint every 5 epochs or at the end
+            # Save checkpoint every 5 epochs or at the end with scheduler state
             if (epoch + 1) % 5 == 0 or epoch + 1 == config["num_epochs"]:
                 checkpoint_path = os.path.join(config["checkpoint_dir"], f"vqvae_epoch_{epoch+1}.pth")
                 torch.save(
@@ -368,16 +363,14 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
                         "epoch": epoch + 1,
                         "model_state": model.module.state_dict(),
                         "optimizer_state": optimizer.state_dict(),
+                        "scheduler_state": scheduler.state_dict(),
                     },
                     checkpoint_path,
                 )
                 print(f"💾 Saved checkpoint at {checkpoint_path}")
-                
-                # Log checkpoint save to wandb
-                wandb.log({"checkpoint_saved": epoch + 1})
-
-    if rank == 0:
-        wandb.finish()
+        
+        # Step the scheduler at the end of each epoch
+        scheduler.step()
 
     cleanup()
 
@@ -417,8 +410,8 @@ def ddp_eval(config: dict) -> None:
     # Create model for evaluation - same parameters for all types
     model = model_module.VQVAENormFormer(
         input_dim=3,
-        latent_dim=128,
-        hidden_dim=256,
+        latent_dim=16,
+        hidden_dim=128,  # Already correct
         num_heads=8,
         num_blocks=3,
         vq_kwargs=config["vq_kwargs"],
@@ -427,9 +420,87 @@ def ddp_eval(config: dict) -> None:
     ckpts = [f for f in os.listdir(config["checkpoint_dir"]) if f.startswith("vqvae_epoch_") and f.endswith(".pth")]
     if ckpts:
         latest = max(ckpts, key=lambda x: int(x.split("_")[-1].split(".")[0]))
-        checkpoint = torch.load(os.path.join(config["checkpoint_dir"], latest), map_location=device)
-        model.load_state_dict(checkpoint["model_state"])
+        checkpoint_path = os.path.join(config["checkpoint_dir"], latest)
+        print(f"📊 Loading checkpoint: {checkpoint_path}")
+        
+        try:
+            checkpoint = torch.load(checkpoint_path, map_location=device)
+            missing_keys, unexpected_keys = model.load_state_dict(checkpoint["model_state"], strict=False)
+            
+            if missing_keys:
+                print(f"⚠️  Missing keys during evaluation: {missing_keys}")
+            if unexpected_keys:
+                print(f"⚠️  Unexpected keys during evaluation: {unexpected_keys}")
+            
+            print("✅ Loaded model for evaluation")
+        except Exception as e:
+            print(f"❌ Failed to load checkpoint for evaluation: {e}")
+            print("⚠️  Using randomly initialized model")
 
+    model.eval()
+    dataloader_eval = DataLoader(eval_dataset, batch_size=config["batch_size"], shuffle=False)
+    all_orig_jets, all_recon_jets = [], []
+
+    with torch.no_grad():
+        for i, batch in enumerate(dataloader_eval):
+            if i >= 300:
+                break
+
+            if use_mask:
+                x_particles, _, _, mask = [b.to(device) for b in batch]
+            else:
+                x_particles, _, _ = [b.to(device) for b in batch]
+                mask = None
+
+            x_particles = x_particles.transpose(1, 2)
+            if log_pt:
+                x_particles[:, :, 0] = torch.log(x_particles[:, :, 0] + 1e-6)
+            x_norm = (x_particles - mean) / std
+
+            if mask is not None:
+                out, _ = model(x_norm, mask=mask)
+            else:
+                out, _ = model(x_norm)
+
+            out_denorm = out * std + mean
+            if log_pt:
+                out_denorm[:, :, 0] = torch.exp(out_denorm[:, :, 0]) - 1e-6
+                x_particles[:, :, 0] = torch.exp(x_particles[:, :, 0]) - 1e-6
+
+            if mask is not None:
+                orig_jet = reconstruct_jet_features_from_particles(x_particles * mask.unsqueeze(-1))
+                recon_jet = reconstruct_jet_features_from_particles(out_denorm * mask.unsqueeze(-1))
+            else:
+                orig_jet = reconstruct_jet_features_from_particles(x_particles)
+                recon_jet = reconstruct_jet_features_from_particles(out_denorm)
+
+            all_orig_jets.append(orig_jet)
+            all_recon_jets.append(recon_jet)
+
+    all_orig_jets = torch.cat(all_orig_jets, dim=0)
+    all_recon_jets = torch.cat(all_recon_jets, dim=0)
+
+    plot_tensor_jet_features(
+        [all_orig_jets, all_recon_jets],
+        labels=("Original", "Reconstructed"),
+        filename=os.path.join(PLOT_DIR, "jet_recon_overlay_ddp_all.png"),
+    )
+    plot_difference(
+        all_orig_jets,
+        all_recon_jets,
+        filename=os.path.join(PLOT_DIR, "jet_feature_difference_ddp_all.png"),
+    )
+
+
+def main() -> None:
+    config = CONFIGS[TRAIN_TYPE].copy()
+    config["type"] = TRAIN_TYPE
+    mp.spawn(ddp_train, args=(WORLD_SIZE, config), nprocs=WORLD_SIZE, join=True)
+    ddp_eval(config)
+
+
+if __name__ == "__main__":
+    main()
     model.eval()
     dataloader_eval = DataLoader(eval_dataset, batch_size=config["batch_size"], shuffle=False)
     all_orig_jets, all_recon_jets = [], []

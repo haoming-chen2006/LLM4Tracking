@@ -116,6 +116,7 @@ def read_file(
     x_particles = np.stack([ak.to_numpy(_pad(table[n], maxlen=max_num_particles)) for n in particle_features], axis=1)
     x_jets = np.stack([ak.to_numpy(table[n]).astype('float32') for n in jet_features], axis=1)
     y = np.stack([ak.to_numpy(table[n]).astype('int') for n in labels], axis=1)
+    #print out p4.mass distribution -- make a histogram
 
     return x_particles, x_jets, y
 
