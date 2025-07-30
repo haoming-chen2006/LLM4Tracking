@@ -1,5 +1,7 @@
 import os
 import sys
+import random
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -51,6 +53,24 @@ LABELS = [
     "HToBB", "HToCC", "HToGG", "HToWW4Q", "HToWW2Q1L",
     "ZToQQ", "WToQQ", "TTBar", "TTBarLep", "ZJetsToNuNu",
 ]
+
+def seed_everything(seed: int) -> torch.Generator:
+    """Seed Python, NumPy and Torch for reproducible dataloaders."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    g = torch.Generator()
+    g.manual_seed(seed)
+    return g
+
+
+def seed_worker(worker_id: int) -> None:
+    """Seed individual dataloader workers deterministically."""
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
+    torch.manual_seed(worker_seed)
 
 def setup(rank: int, world_size: int) -> None:
     os.environ.setdefault("MASTER_ADDR", "localhost")
@@ -180,6 +200,11 @@ def ddp_train_moe(rank: int, world_size: int, config: dict) -> None:
     setup(rank, world_size)
     device = torch.device(f"cuda:{rank}")
 
+    # Seeding for reproducibility
+    base_seed = config.get("seed", 42)
+    seed = base_seed + rank
+    generator = seed_everything(seed)
+
     # Initialize wandb only on rank 0 with better error handling
     if rank == 0:
         try:
@@ -212,7 +237,13 @@ def ddp_train_moe(rank: int, world_size: int, config: dict) -> None:
     model_module = __import__("models.MOE", fromlist=["VQVAENormFormer"])
 
     sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=True)
-    dataloader = DataLoader(dataset, batch_size=config["batch_size"], sampler=sampler)
+    dataloader = DataLoader(
+        dataset,
+        batch_size=config["batch_size"],
+        sampler=sampler,
+        generator=generator,
+        worker_init_fn=seed_worker,
+    )
 
     if rank == 0:
         mean, std = compute_global_stats(dataset, config["batch_size"], log_pt, use_mask)
@@ -251,43 +282,44 @@ def ddp_train_moe(rank: int, world_size: int, config: dict) -> None:
     scaler = GradScaler()
 
     os.makedirs(config["checkpoint_dir"], exist_ok=True)
-    
+
     # Load most recent checkpoint with scheduler state
     start_epoch = 0
+    checkpoint = None
     if rank == 0:
         ckpts = [f for f in os.listdir(config["checkpoint_dir"]) if f.startswith("moe_epoch_") and f.endswith(".pth")]
         if ckpts:
             latest = max(ckpts, key=lambda x: int(x.split("_")[-1].split(".")[0]))
             checkpoint_path = os.path.join(config["checkpoint_dir"], latest)
             try:
-                checkpoint = torch.load(checkpoint_path, map_location=device)
-                # Use strict=False to handle potential model architecture changes
-                missing_keys, unexpected_keys = model.module.load_state_dict(checkpoint["model_state"], strict=False)
-                
-                if missing_keys:
-                    print(f"⚠️  Missing keys in checkpoint: {missing_keys}")
-                if unexpected_keys:
-                    print(f"⚠️  Unexpected keys in checkpoint: {unexpected_keys}")
-                
-                # Load optimizer and scheduler states if available
-                if not missing_keys:
-                    optimizer.load_state_dict(checkpoint["optimizer_state"])
-                    if "scheduler_state" in checkpoint:
-                        scheduler.load_state_dict(checkpoint["scheduler_state"])
-                        print("✅ Loaded scheduler state")
-                    print("✅ Loaded optimizer state")
-                else:
-                    print("⚠️  Skipping optimizer/scheduler state due to model changes")
-                
+                checkpoint = torch.load(checkpoint_path, map_location="cpu")
                 start_epoch = checkpoint["epoch"]
                 print(f"🔄 Loaded MOE checkpoint from {checkpoint_path} (epoch {start_epoch})")
-                
             except Exception as e:
                 print(f"❌ Failed to load checkpoint {checkpoint_path}: {e}")
-                print("🆕 Starting from scratch due to checkpoint error")
                 start_epoch = 0
         else:
             print("🆕 No MOE checkpoint found, starting from scratch")
+
+    # Broadcast checkpoint to all ranks
+    obj_list = [checkpoint]
+    dist.broadcast_object_list(obj_list, src=0)
+    checkpoint = obj_list[0]
+
+    if checkpoint is not None:
+        missing_keys, unexpected_keys = model.module.load_state_dict(checkpoint["model_state"], strict=False)
+        if not missing_keys:
+            optimizer.load_state_dict(checkpoint["optimizer_state"])
+            if "scheduler_state" in checkpoint:
+                scheduler.load_state_dict(checkpoint["scheduler_state"])
+            if "scaler_state" in checkpoint:
+                scaler.load_state_dict(checkpoint["scaler_state"])
+        start_epoch = checkpoint.get("epoch", 0)
+        if rank == 0:
+            if missing_keys:
+                print(f"⚠️  Missing keys in checkpoint: {missing_keys}")
+            if unexpected_keys:
+                print(f"⚠️  Unexpected keys in checkpoint: {unexpected_keys}")
     
     # Broadcast start_epoch to all processes
     start_epoch_tensor = torch.tensor(start_epoch, device=device)
@@ -460,6 +492,7 @@ def ddp_train_moe(rank: int, world_size: int, config: dict) -> None:
                     "model_state": model.module.state_dict(),
                     "optimizer_state": optimizer.state_dict(),
                     "scheduler_state": scheduler.state_dict(),
+                    "scaler_state": scaler.state_dict(),
                 },
                 checkpoint_path,
             )
@@ -479,6 +512,7 @@ def ddp_train_moe(rank: int, world_size: int, config: dict) -> None:
 
 def ddp_eval_moe(config: dict) -> None:
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    generator = seed_everything(config.get("seed", 42))
     
     # Load training dataset for stats
     dataset = load_all_labels_dataset(config["start"], config["end"], False)
@@ -523,7 +557,12 @@ def ddp_eval_moe(config: dict) -> None:
             
             # Create dataloader for this label
             dataloader_eval = load_jetclass_label_as_tensor(
-                label=label, start=11, end=12, batch_size=config["batch_size"]
+                label=label,
+                start=11,
+                end=12,
+                batch_size=config["batch_size"],
+                generator=generator,
+                worker_init_fn=seed_worker,
             )
             
             if len(dataloader_eval) == 0:
