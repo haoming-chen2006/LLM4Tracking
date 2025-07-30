@@ -201,9 +201,10 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
     scaler = GradScaler()
 
     os.makedirs(config["checkpoint_dir"], exist_ok=True)
-    
+
     # Load most recent checkpoint
     start_epoch = 0
+    checkpoint = None
     if rank == 0:
         ckpts = [f for f in os.listdir(config["checkpoint_dir"]) if f.startswith("vqvae_epoch_") and f.endswith(".pth")]
         if ckpts:
@@ -216,6 +217,24 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
             print(f"🔄 Loaded checkpoint from {checkpoint_path} (epoch {start_epoch})")
         else:
             print("🆕 No checkpoint found, starting from scratch")
+
+    # Broadcast checkpoint to all ranks so everyone starts from the same state
+    checkpoint_obj = [checkpoint]
+    dist.broadcast_object_list(checkpoint_obj, src=0)
+    checkpoint = checkpoint_obj[0]
+    if rank != 0 and checkpoint is not None:
+        model.module.load_state_dict(checkpoint["model_state"])
+        optimizer.load_state_dict(checkpoint["optimizer_state"])
+        start_epoch = checkpoint["epoch"]
+    elif checkpoint is None:
+        # No checkpoint found; ensure identical initialization across ranks
+        state_obj = [model.module.state_dict(), optimizer.state_dict()]
+        if rank != 0:
+            state_obj = [None, None]
+        dist.broadcast_object_list(state_obj, src=0)
+        if rank != 0:
+            model.module.load_state_dict(state_obj[0])
+            optimizer.load_state_dict(state_obj[1])
     
     # Broadcast start_epoch to all processes
     start_epoch_tensor = torch.tensor(start_epoch, device=device)
