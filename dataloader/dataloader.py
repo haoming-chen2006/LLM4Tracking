@@ -120,7 +120,8 @@ def read_file(
 
     return x_particles, x_jets, y
 
-def load_jetclass_label_as_tensor(label="HToBB", start=10, end=15, batch_size=512):
+def load_jetclass_label_as_tensor(label="HToBB", start=10, end=15, batch_size=512,
+                                  generator=None, worker_init_fn=None):
     x_particles_list = []
     x_jet_list = []
     y_list = []
@@ -151,7 +152,13 @@ def load_jetclass_label_as_tensor(label="HToBB", start=10, end=15, batch_size=51
 
     # Build dataset and dataloader
     dataset = TensorDataset(x_particles_tensor, x_jet_tensor, y_tensor)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    dataloader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        generator=generator,
+        worker_init_fn=worker_init_fn,
+    )
 
     return dataloader
 
