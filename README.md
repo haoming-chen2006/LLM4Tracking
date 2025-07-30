@@ -9,10 +9,7 @@ LLM4Tracking explores foundation models for particle physics. It is an experimen
 The long--term goal is to create a unified foundation model that can understand and generate collider events. A first step toward this goal is learning a **tokenizer** for jet constituents. The repository contains utilities to read the JetClass dataset, several prototype models, and plotting utilities to visualize results. Typical use cases include:
 
 - Training a baseline vector-quantised autoencoder (VQ-VAE).
-- Experimenting with more expressive architectures such as the NormFormer based "OmniJet" approach.
-- Fast prototyping with FlashAttention to scale up depth and codebook size.
-
-The code is under active development and many components are still exploratory.
+- Experimenting with more expressive architectures such as mixture of experts
 
 ---
 
@@ -40,7 +37,9 @@ Several VQ-VAE style models are implemented under [`models/`](models):
 3. **VQVAE NormFormer** – [`NormFormer.py`](models/NormFormer.py)
    - Implements the "OmniJet" idea using a stack of NormFormer blocks to process sequences of particles.
 4. **VQVAE Flash** – [`NormFormer_Flash.py`](models/NormFormer_Flash.py)
-   - A deeper architecture that utilises FlashAttention for faster training and supports larger codebooks.
+   - A deeper architecture that utilises FlashAttention for faster training and supports larger codebooks, uses masking.
+5. **VQVAE MOE** – [`NormFormer_Flash.py`](models/NormFormer_Flash.py)
+   - Uses 4 experts and top_k = 2, employinng mixture of experts for more effecient training.
 
 Each model produces a reconstruction along with VQ statistics. The NormFormer variants accept optional particle masks for variable–length jets.
 
