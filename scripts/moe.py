@@ -22,16 +22,16 @@ from plot.plot import (
     plot_difference,
 )
 
-TRAIN_TYPE = "MOE_large"  # Options: "MOE_med", "MOE_large"
+TRAIN_TYPE = "MOE_med"  # Options: "MOE_med", "MOE_large"
 WORLD_SIZE = 4
 
 MOE_CONFIGS = {
     "MOE_med": {
         "batch_size": 512,
-        "num_epochs": 30,
+        "num_epochs": 40,
         "learning_rate": 1e-4,
-        "start": 20,
-        "end": 30,
+        "start": 40,
+        "end": 50,
         "vq_kwargs": {"num_codes": 4096, "beta": 0.45, "affine_lr": 1.0,
                       "sync_nu": 2, "replace_freq": 3, "dim": -1},
         "checkpoint_dir": "checkpoints/moe_checkpoints_vqvae_moe_med",
@@ -39,10 +39,10 @@ MOE_CONFIGS = {
     "MOE_large": {
         "type": "MOE_large",
         "batch_size": 512,
-        "num_epochs": 80,
+        "num_epochs": 90,
         "learning_rate": 1e-4,
-        "start": 80,
-        "end": 90,
+        "start": 1,
+        "end": 10,
         "vq_kwargs": {"num_codes": 8192, "beta": 0.9, "affine_lr": 0.0,
                       "sync_nu": 5, "replace_freq": 2, "dim": -1},
         "checkpoint_dir": "checkpoints/moe_checkpoints_vqvae_moe_large",

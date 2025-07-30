@@ -69,15 +69,15 @@ class VQVAEJet(nn.Module):
 
         self.norm = FeatureNormJet(mean, std)
         self.encoder = EncoderJet(input_dim, hidden_dim, z_dim)
+        # Remove duplicate keys from vq_kwargs
+        vq_args = dict(vq_kwargs) if vq_kwargs is not None else {}
+        vq_args.pop("num_codes", None)
+        vq_args.pop("beta", None)
         self.vq = VectorQuant(
             feature_size=z_dim,
             num_codes=num_embeddings,
             beta=commitment_cost,
-            sync_nu=0.1,
-            affine_lr=0.1,
-            affine_groups=1,
-            replace_freq=10,
-            **vq_kwargs,
+            **vq_args,
         )
         self.decoder = DecoderJet(z_dim, hidden_dim, input_dim)
 

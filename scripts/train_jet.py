@@ -1,157 +1,205 @@
-import sys
 import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import sys
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import torch.distributed as dist
+import torch.multiprocessing as mp
+from torch.utils.data import DataLoader, DistributedSampler, TensorDataset
 from torch.cuda.amp import GradScaler, autocast
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import models.vqvaeMLP_jet as vqvae
-from plot.plot import (
-    plot_tensor_jet_features,
-    reconstruct_jet_features_from_particles,
-    plot_code_histogram,
-)
-from dataloader.dataloader import load_jetclass_label_as_tensor
-import vector
 
-# Directory to store plots
-PLOT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                        "plot", "training_plots")
-os.makedirs(PLOT_DIR, exist_ok=True)
+LABELS = [
+    "HToBB", "HToCC", "HToGG", "HToWW4Q", "HToWW2Q1L",
+    "ZToQQ", "WToQQ", "TTBar", "TTBarLep", "ZJetsToNuNu",
+]
 
-batch_size = 128
-num_epochs = 1
-lr = 2e-4
-start = 10
-end = 11
-checkpoint_dir = "checkpoints/checkpoints_jet"
-os.makedirs(checkpoint_dir, exist_ok=True)
+WORLD_SIZE = 4
 
-vq_kwargs = {
-    "num_codes": 1024,
-    "beta": 0.25,
-    "affine_lr": 0.0,
-    "sync_nu": 2,
-    "replace_freq": 20,
-    "dim": -1,
+CONFIG = {
+    "batch_size": 512,
+    "num_epochs": 20,
+    "learning_rate": 2e-4,
+    "start": 10,
+    "end": 40,
+    "vq_kwargs": {
+        "num_codes": 1024,
+        "beta": 0.25,
+        "affine_lr": 0.0,
+        "sync_nu": 1,
+        "replace_freq": 20,
+        "dim": -1,
+    },
+    "checkpoint_dir": "checkpoints/vqvae_mlp_jet",
 }
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-print("\U0001F4E6 Loading full dataset for global normalization...")
-dataloader = load_jetclass_label_as_tensor(label="HToBB", start=start, end=end, batch_size=batch_size)
-all_jets = []
-for _, jets, _ in dataloader:
-    all_jets.append(jets)
-all_jets = torch.cat(all_jets, dim=0)  
-global_mean = all_jets.mean(dim=0).to(device)  # [1, 1, 4]
-global_std = all_jets.std(dim = 0).to(device) + 1e-6
-print(f"✅ Computed global mean: {global_mean.flatten()}")
-print(f"✅ Computed global std: {global_std.flatten()}")
+PLOT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "plot", "jet_training_plots")
+os.makedirs(PLOT_DIR, exist_ok=True)
 
 
-model = vqvae.VQVAEJet(
-    input_dim=3,
-    hidden_dim=256,
-    z_dim=128,
-    num_embeddings=vq_kwargs["num_codes"],
-    commitment_cost=vq_kwargs["beta"],
-    mean=global_mean,  # [1, 1, 4]
-    std=global_std,    # [1, 1, 4]
-    vq_kwargs=vq_kwargs,
-)
-model = model.to(device)
-optimizer = optim.Adam(model.parameters(), lr=lr, betas=(0.9, 0.95))
-recon_loss_fn = nn.MSELoss()
-scaler = GradScaler()
+def setup(rank: int, world_size: int) -> None:
+    os.environ.setdefault("MASTER_ADDR", "localhost")
+    os.environ.setdefault("MASTER_PORT", "12358")
+    dist.init_process_group("nccl", rank=rank, world_size=world_size)
+    torch.cuda.set_device(rank)
 
-start_epoch = 0
-checkpoints = [f for f in os.listdir(checkpoint_dir) if f.startswith("vqvae_epoch_") and f.endswith(".pth")]
-if checkpoints:
-    latest = max(checkpoints, key=lambda x: int(x.split('_')[-1].split('.')[0]))
-    path = os.path.join(checkpoint_dir, latest)
-    print(f"\U0001F501 Resuming from: {path}")
-    checkpoint = torch.load(path)
-    model.load_state_dict(checkpoint["model_state"])
-    optimizer.load_state_dict(checkpoint["optimizer_state"])
-    start_epoch = checkpoint["epoch"]
 
-for epoch in range(start_epoch, start_epoch + num_epochs):
-    model.train()
-    epoch_loss = []
-    total_recon_loss = []
-    total_vq_loss = []
-    codes_this_epoch = []
+def cleanup() -> None:
+    dist.destroy_process_group()
 
-    for _, x_jet, _ in dataloader:
-        x_jets = x_jet.to(device)       # (B,  4)
 
-        optimizer.zero_grad()
-        with autocast():
-            x_recon, loss_dict = model(x_jets)
-            recon_loss = recon_loss_fn(x_recon, x_jets)
-            vq_loss = loss_dict.get("loss", 0.0) if isinstance(loss_dict, dict) else loss_dict
-            loss = recon_loss + vq_loss
+def load_all_labels_jet_dataset(start: int, end: int) -> TensorDataset:
+    from dataloader.dataloader import load_jetclass_label_as_dataset
 
-        scaler.scale(loss).backward()
-        scaler.step(optimizer)
-        scaler.update()
+    datasets = []
+    for lbl in LABELS:
+        try:
+            ds = load_jetclass_label_as_dataset(label=lbl, start=start, end=end)
+            datasets.append(ds)
+        except Exception as e:
+            print(f"Failed to load dataset for {lbl}: {e}")
+            continue
 
-        epoch_loss.append(loss.detach())
-        total_recon_loss.append(recon_loss.detach())
-        total_vq_loss.append(vq_loss.detach())
-        if isinstance(loss_dict, dict) and "q" in loss_dict:
-            codes_this_epoch.append(loss_dict["q"].detach().cpu())
+    if not datasets:
+        raise RuntimeError("No valid datasets loaded for any label")
 
-    if epoch % 10 == 0:
-        print(f"\U0001F4C8 Epoch [{epoch+1}/{num_epochs}] - Total: {torch.stack(epoch_loss).mean().item():.4f} | Recon: {torch.stack(total_recon_loss).mean().item():.4f} | VQ: {torch.stack(total_vq_loss).mean().item():.4f}")
-        nique_codes = loss_dict['q'].unique().numel()
-        print(f"\U0001F4C8 Number of unique codes: {nique_codes}")
+    x_jets = torch.cat([d.tensors[1] for d in datasets], dim=0)
+    y = torch.cat([d.tensors[2] for d in datasets], dim=0)
+    return TensorDataset(x_jets, y)
 
-    if epoch + 1 == num_epochs:
-        save_path = os.path.join(checkpoint_dir, f"vqvae_epoch_{epoch+1}.pth")
-        torch.save({
-            "epoch": epoch + 1,
-            "model_state": model.state_dict(),
-            "optimizer_state": optimizer.state_dict(),
-        }, save_path)
-        print(f"\U0001F4BE Saved checkpoint: {save_path}")
-        if codes_this_epoch:
-            codes_tensor = torch.cat(codes_this_epoch).view(-1)
-            plot_code_histogram(
-                codes_tensor,
-                vq_kwargs["num_codes"],
-                os.path.join(PLOT_DIR, f"jet_code_hist_epoch_{epoch+1}.png"),
+
+def compute_global_stats(dataset: TensorDataset, batch_size: int):
+    loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+    jets = []
+    for batch in loader:
+        x_j, _ = batch
+        jets.append(x_j)
+    jets_all = torch.cat(jets, dim=0)
+    mean = jets_all.mean(dim=0)
+    std = jets_all.std(dim=0) + 1e-6
+    return mean, std
+
+
+def ddp_train(rank: int, world_size: int, config: dict) -> None:
+    setup(rank, world_size)
+    device = torch.device(f"cuda:{rank}")
+
+    dataset = load_all_labels_jet_dataset(config["start"], config["end"])
+    sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=True)
+    dataloader = DataLoader(dataset, batch_size=config["batch_size"], sampler=sampler)
+
+    if rank == 0:
+        mean, std = compute_global_stats(dataset, config["batch_size"])
+        mean = mean.to(device)
+        std = std.to(device)
+    else:
+        mean = torch.zeros(3, device=device)
+        std = torch.ones(3, device=device)
+    dist.broadcast(mean, 0)
+    dist.broadcast(std, 0)
+
+    model = vqvae.VQVAEJet(
+        input_dim=3,
+        hidden_dim=256,
+        z_dim=128,
+        num_embeddings=config["vq_kwargs"]["num_codes"],
+        commitment_cost=config["vq_kwargs"]["beta"],
+        mean=mean,
+        std=std,
+        vq_kwargs=config["vq_kwargs"],
+    ).to(device)
+    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[rank])
+
+    optimizer = optim.Adam(model.parameters(), lr=config["learning_rate"], betas=(0.9, 0.95))
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=config["num_epochs"], eta_min=config["learning_rate"] * 0.01
+    )
+    recon_loss_fn = nn.MSELoss()
+    scaler = GradScaler()
+
+    os.makedirs(config["checkpoint_dir"], exist_ok=True)
+
+    start_epoch = 0
+    checkpoint = None
+    if rank == 0:
+        ckpts = [f for f in os.listdir(config["checkpoint_dir"]) if f.startswith("jet_epoch_") and f.endswith(".pth")]
+        if ckpts:
+            latest = max(ckpts, key=lambda x: int(x.split("_")[-1].split(".")[0]))
+            path = os.path.join(config["checkpoint_dir"], latest)
+            checkpoint = torch.load(path, map_location="cpu")
+            start_epoch = checkpoint["epoch"]
+            print(f"Resuming from {path} (epoch {start_epoch})")
+    obj = [checkpoint]
+    dist.broadcast_object_list(obj, src=0)
+    checkpoint = obj[0]
+    if checkpoint:
+        model.module.load_state_dict(checkpoint["model_state"])
+        optimizer.load_state_dict(checkpoint["optimizer_state"])
+        start_epoch = checkpoint["epoch"]
+
+    for epoch in range(start_epoch, config["num_epochs"]):
+        sampler.set_epoch(epoch)
+        model.train()
+        total_loss = torch.tensor(0.0, device=device)
+        recon_total = torch.tensor(0.0, device=device)
+        vq_total = torch.tensor(0.0, device=device)
+
+        for x_jets, _ in dataloader:
+            x_jets = x_jets.to(device)
+            optimizer.zero_grad()
+            with autocast():
+                out, vq_loss = model(x_jets)
+                r_loss = recon_loss_fn(out, x_jets)
+                if isinstance(vq_loss, dict):
+                    v_loss = vq_loss.get("loss", torch.tensor(0.0, device=device))
+                else:
+                    v_loss = vq_loss
+                loss = r_loss + v_loss
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+
+            total_loss += loss.detach()
+            recon_total += r_loss.detach()
+            vq_total += v_loss.detach()
+
+        scheduler.step()
+
+        total_loss /= len(dataloader)
+        recon_total /= len(dataloader)
+        vq_total /= len(dataloader)
+        dist.all_reduce(total_loss)
+        dist.all_reduce(recon_total)
+        dist.all_reduce(vq_total)
+        total_loss /= world_size
+        recon_total /= world_size
+        vq_total /= world_size
+
+        if rank == 0:
+            print(
+                f"Epoch {epoch+1}/{config['num_epochs']} - Loss: {total_loss.item():.4f} | "
+                f"Recon: {recon_total.item():.4f} | VQ: {vq_total.item():.4f}"
+            )
+            torch.save(
+                {
+                    "epoch": epoch + 1,
+                    "model_state": model.module.state_dict(),
+                    "optimizer_state": optimizer.state_dict(),
+                },
+                os.path.join(config["checkpoint_dir"], f"jet_epoch_{epoch+1}.pth"),
             )
 
-# === Post-Training Recon Analysis ===
-model.eval()
+    cleanup()
 
-all_orig_jets = []
-all_recon_jets = []
 
-with torch.no_grad():
-    dataloader_eval = load_jetclass_label_as_tensor(label="HToBB", start=12, end=18, batch_size=batch_size)
-    for i, (_, x_jets, _) in enumerate(dataloader_eval):
-        if i >= 300:
-            break
+def main() -> None:
+    config = CONFIG.copy()
+    mp.spawn(ddp_train, args=(WORLD_SIZE, config), nprocs=WORLD_SIZE, join=True)
 
-        x_jets = x_jets.to(device)
-        x_recon, _ = model(x_jets)  # model handles normalization internally
 
-        all_orig_jets.append(x_jets.to(device))
-        all_recon_jets.append(x_recon.to(device))
-
-all_orig_jets = torch.cat(all_orig_jets, dim=0)   # [30*B, 4]
-all_recon_jets = torch.cat(all_recon_jets, dim=0) # [30*B, 4]
-print("all_orig_jets shape: ", all_orig_jets.shape)
-print("all_recon_jets shape: ", all_recon_jets.shape)
-print("all_orig_jets mean: ", all_orig_jets.mean(dim=0))
-print("all_recon_jets mean: ", all_recon_jets.mean(dim=0))
-print("all_orig_jets std: ", all_orig_jets.std(dim=0))
-print("all_recon_jets std: ", all_recon_jets.std(dim=0))
-
-plot_tensor_jet_features(
-    [all_orig_jets, all_recon_jets],
-    labels=("Original", "Reconstructed"),
-    filename=os.path.join(PLOT_DIR, "jet_recon_overlay_30batch.png")
-)  # [B, 4]
+if __name__ == "__main__":
+    main()
