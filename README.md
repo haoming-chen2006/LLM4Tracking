@@ -1,6 +1,6 @@
 # LLM4Tracking
 
-LLM4Tracking explores foundation models for particle physics. It is an experimental code base focused on building tokenizers and generative models for jets. The project currently focuses on developing VQ-VAE style models that can encode sets of jet constituents into discrete tokens.
+LLM4Tracking explores foundation models for particle physics. It is an experimental code base focused on building tokenizers and generative models for jets. The project currently focuses on developing MOE-empowered VQ-VAE style models that can encode sets of jet constituents into discrete tokens, and integrating them into a language model.
 
 ---
 
