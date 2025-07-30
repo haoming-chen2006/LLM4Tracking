@@ -19,8 +19,8 @@ PLOT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__
                         "plot", "checkpoint_comparison")
 os.makedirs(PLOT_DIR, exist_ok=True)
 
-TRAIN_TYPE = "MOE_large"  # Change this as needed
-CHECKPOINT_EPOCH = [10,20,30,40] # Change to list of epochs or single epoch or "latest"
+TRAIN_TYPE = "MOE_med"  # Change this as needed
+CHECKPOINT_EPOCH = [3,6,9,15] # Change to list of epochs or single epoch or "latest"
 
 CONFIGS = {
     "new": {
