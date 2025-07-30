@@ -140,4 +140,52 @@ def load_jetclass_label_as_dataset(label="HToBB", start=10, end=15):
     dataset = TensorDataset(x_particles_tensor, x_jet_tensor, y_tensor, mask_tensor)
     return dataset
 
+def load_jetclass_label_as_masked_dataset(label="HToBB", start=10, end=15):
+    """
+    Load JetClass data for a specific label with masking.
+    
+    Args:
+        label (str): The label type to load (e.g., "HToBB", "HToCC", etc.)
+        start (int): Starting file number
+        end (int): Ending file number (exclusive)
+        
+    Returns:
+        TensorDataset: Dataset containing (x_particles, x_jets, y, mask) tensors
+    """
+    x_particles_list = []
+    x_jet_list = []
+    y_list = []
+    mask_list = []
+
+    for i in range(start, end):
+        file_path = f"/pscratch/sd/h/haoming/particle_transformer/dataset/JetClass/{label}_{i:03d}.root"
+        if not os.path.exists(file_path):
+            continue
+        try:
+            x_particles, x_jet, y, mask = read_file(file_path)
+            x_particles_list.append(x_particles)
+            x_jet_list.append(x_jet)
+            y_list.append(y)
+            mask_list.append(mask)
+        except Exception as e:
+            print(f"Error loading file {file_path}: {e}")
+            continue
+
+    if not x_particles_list:
+        raise ValueError(f"No valid data files found for label {label} between {start} and {end}")
+
+    # Concatenate all data
+    x_particles_all = np.concatenate(x_particles_list, axis=0)
+    x_jet_all = np.concatenate(x_jet_list, axis=0)
+    y_all = np.concatenate(y_list, axis=0)
+    mask_all = np.concatenate(mask_list, axis=0)
+
+    # Convert to PyTorch tensors
+    x_particles_tensor = torch.tensor(x_particles_all, dtype=torch.float32)
+    x_jet_tensor = torch.tensor(x_jet_all, dtype=torch.float32)
+    y_tensor = torch.tensor(y_all, dtype=torch.long)
+    mask_tensor = torch.tensor(mask_all, dtype=torch.float32)
+
+    return TensorDataset(x_particles_tensor, x_jet_tensor, y_tensor, mask_tensor)
+
 

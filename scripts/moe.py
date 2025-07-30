@@ -26,10 +26,10 @@ WORLD_SIZE = 4
 MOE_CONFIGS = {
     "MOE_med": {
         "batch_size": 512,
-        "num_epochs": 50,
+        "num_epochs": 10,
         "learning_rate": 1e-4,
-        "start": 40,
-        "end": 50,
+        "start": 10,
+        "end": 20,
         "vq_kwargs": {"num_codes": 4096, "beta": 0.45, "affine_lr": 1.0,
                       "sync_nu": 2, "replace_freq": 3, "dim": -1},
         "checkpoint_dir": "checkpoints/moe_checkpoints_vqvae_moe_med",
@@ -89,21 +89,91 @@ def compute_global_stats(dataset, batch_size, log_pt=False, use_mask=False):
 
 def load_all_labels_dataset(start: int, end: int, use_mask: bool):
     from dataloader.dataloader import load_jetclass_label_as_dataset
+    from dataloader.masked_dataloader import load_jetclass_label_as_masked_dataset
 
     datasets = []
+    global_mask_stats = {
+        "total_valid_tokens": 0,
+        "total_possible_tokens": 0,
+        "total_tensors": 0,
+        "masking_lengths": []
+    }
+    
     for lbl in LABELS:
         try:
-            ds = load_jetclass_label_as_dataset(label=lbl, start=start, end=end)
+            if use_mask:
+                ds = load_jetclass_label_as_masked_dataset(label=lbl, start=start, end=end)
+            else:
+                ds = load_jetclass_label_as_dataset(label=lbl, start=start, end=end)
             datasets.append(ds)
-        except Exception:
+            
+            # Add diagnostic prints for first dataset of each type
+            if len(datasets) == 1:
+                print(f"\n🔍 Examining first dataset ({lbl}):")
+                print(f"  Dataset size: {len(ds)}")
+                x_part = ds.tensors[0]  # [B, T, 3]
+                print(f"  Particle tensor shape: {x_part.shape}")
+                
+                if use_mask:
+                    mask = ds.tensors[3]  # [B, T]
+                    # Print mask statistics for first 6 samples
+                    for i in range(min(6, len(mask))):
+                        valid_tokens = mask[i].sum().item()
+                        total_tokens = mask[i].shape[0]
+                        print(f"  Sample {i}: {valid_tokens}/{total_tokens} tokens "
+                              f"({valid_tokens/total_tokens*100:.1f}% valid)")
+                    
+                    # Global mask statistics for this dataset
+                    total_valid = mask.sum().item()
+                    total_possible = mask.numel()
+                    
+                    # Update global statistics
+                    global_mask_stats["total_valid_tokens"] += total_valid
+                    global_mask_stats["total_possible_tokens"] += total_possible
+                    global_mask_stats["total_tensors"] += len(mask)
+                    
+                    # Calculate masking lengths for this dataset
+                    for m in mask:
+                        valid_length = m.sum().item()
+                        global_mask_stats["masking_lengths"].append(valid_length)
+                    
+                    print(f"\n📊 Dataset mask statistics ({lbl}):")
+                    print(f"  Total valid tokens: {total_valid:,}")
+                    print(f"  Total possible tokens: {total_possible:,}")
+                    print(f"  Valid token ratio: {total_valid/total_possible*100:.1f}%\n")
+        except Exception as e:
+            print(f"⚠️  Failed to load dataset for label {lbl}: {e}")
             continue
 
     if not datasets:
         raise RuntimeError("No valid datasets loaded for any label")
+        
+    if use_mask:
+        # Print final global mask statistics
+        print("\n📊 Final Global Mask Statistics:")
+        print(f"  Total tensors processed: {global_mask_stats['total_tensors']:,}")
+        print(f"  Total valid tokens: {global_mask_stats['total_valid_tokens']:,}")
+        print(f"  Total possible tokens: {global_mask_stats['total_possible_tokens']:,}")
+        valid_ratio = (global_mask_stats['total_valid_tokens'] / 
+                      global_mask_stats['total_possible_tokens'] * 100)
+        print(f"  Overall valid token ratio: {valid_ratio:.1f}%")
+        
+        # Calculate and print masking length statistics
+        lengths = torch.tensor(global_mask_stats['masking_lengths'])
+        print(f"\n📏 Masking Length Statistics:")
+        print(f"  Mean valid tokens per tensor: {lengths.float().mean():.1f}")
+        print(f"  Median valid tokens per tensor: {lengths.float().median():.1f}")
+        print(f"  Min valid tokens: {lengths.min().item()}")
+        print(f"  Max valid tokens: {lengths.max().item()}\n")
 
     x_parts = torch.cat([d.tensors[0] for d in datasets], dim=0)
     x_jets = torch.cat([d.tensors[1] for d in datasets], dim=0)
     y = torch.cat([d.tensors[2] for d in datasets], dim=0)
+    
+    if use_mask:
+        # Include masks in the dataset when use_mask is True
+        masks = torch.cat([d.tensors[3] for d in datasets], dim=0)
+        return TensorDataset(x_parts, x_jets, y, masks)
     return TensorDataset(x_parts, x_jets, y)
 
 def ddp_train_moe(rank: int, world_size: int, config: dict) -> None:
@@ -135,10 +205,10 @@ def ddp_train_moe(rank: int, world_size: int, config: dict) -> None:
             # Set a flag to disable wandb logging
             os.environ["WANDB_DISABLED"] = "true"
 
-    # Load MOE model
-    dataset = load_all_labels_dataset(config["start"], config["end"], False)
-    use_mask = False
-    log_pt = False
+    # Load MOE model with proper masking
+    dataset = load_all_labels_dataset(config["start"], config["end"], config.get("use_mask", False))
+    use_mask = config.get("use_mask", False)
+    log_pt = config.get("log_pt", False)
     model_module = __import__("models.MOE", fromlist=["VQVAENormFormer"])
 
     sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=True)
@@ -238,29 +308,60 @@ def ddp_train_moe(rank: int, world_size: int, config: dict) -> None:
         return
 
     for epoch in range(start_epoch, config["num_epochs"]):
-        if rank == 0:
-            current_lr = scheduler.get_last_lr()[0]
-            print(f"🔄 Starting MOE epoch {epoch + 1}/{config['num_epochs']} (LR: {current_lr:.6f})")
+        # Initialize per-epoch statistics
+        epoch_loss = torch.tensor(0.0, device=device)
+        recon_loss = torch.tensor(0.0, device=device)
+        vq_loss = torch.tensor(0.0, device=device)
+        aux_loss = torch.tensor(0.0, device=device)
         
-        sampler.set_epoch(epoch)
-        model.train()
-        epoch_loss = torch.zeros(1, device=device)
-        recon_loss = torch.zeros(1, device=device)
-        vq_loss = torch.zeros(1, device=device)
-        aux_loss = torch.zeros(1, device=device)
+        if use_mask:
+            # Reset mask stats for each epoch
+            epoch_mask_stats = {
+                "valid_tokens": 0,
+                "total_tokens": 0,
+                "sample_count": 0
+            }
         
         batch_count = 0
         for batch_idx, batch in enumerate(dataloader):
             batch_count += 1
-            
-            x_particles, _, _ = [b.to(device) for b in batch]
+            if use_mask:
+                x_particles, _, _, mask = [b.to(device) for b in batch]
+                # Print mask statistics for first batch of first epoch
+                if epoch == start_epoch and batch_idx == 0 and rank == 0:
+                    print("\n🔍 First batch mask statistics:")
+                    valid_tokens = mask.sum(dim=1)  # [B]
+                    total_tokens = mask.shape[1]    # T
+                    for i in range(min(6, len(mask))):
+                        print(f"  Sample {i}: {valid_tokens[i].item()}/{total_tokens} tokens "
+                              f"({valid_tokens[i].item()/total_tokens*100:.1f}% valid)")
+                    print(f"  Batch average: {valid_tokens.float().mean().item():.1f} valid tokens")
+                    print(f"  Mask shape: {mask.shape}\n")
+                # Accumulate mask stats for this batch only
+                epoch_mask_stats["valid_tokens"] += int(mask.sum().item())
+                epoch_mask_stats["total_tokens"] += int(mask.numel())
+                epoch_mask_stats["sample_count"] += int(len(mask))
+            else:
+                x_particles, _, _ = [b.to(device) for b in batch]
+                mask = None
+                
             x_particles = x_particles.transpose(1, 2)
-            x_norm = (x_particles - mean) / std
+            if log_pt:
+                x_particles[:, :, 0] = torch.log(x_particles[:, :, 0] + 1e-6)
+
+            x_norm = (x_particles - mean) / std if not use_mask else (
+                (x_particles - mean) / std) * mask.unsqueeze(-1)
 
             optimizer.zero_grad()
             with autocast():
-                out, loss_dict = model(x_norm)
-                r_loss = recon_loss_fn(out, x_norm).mean()
+                # Pass mask to model
+                out, loss_dict = model(x_norm, mask=mask)
+                
+                # Use masked loss computation
+                if use_mask:
+                    r_loss = (((out - x_norm) ** 2) * mask.unsqueeze(-1)).sum() / mask.sum()
+                else:
+                    r_loss = recon_loss_fn(out, x_norm).mean()
 
                 # Safely handle dict vs tensor loss_dict for MOE
                 if isinstance(loss_dict, dict):
@@ -301,7 +402,23 @@ def ddp_train_moe(rank: int, world_size: int, config: dict) -> None:
                     pass  # Continue without logging
 
         if rank == 0:
-            print(f"✅ MOE Epoch {epoch + 1} completed - Processed {batch_count} batches")
+            # Print epoch completion and masking statistics
+            print(f"\n✅ MOE Epoch {epoch + 1} completed:")
+            print(f"  Processed {batch_count} batches")
+            if use_mask:
+                # Only print local stats, skip distributed reduction
+                if epoch_mask_stats["total_tokens"] > 0 and epoch_mask_stats["sample_count"] > 0:
+                    valid_ratio = epoch_mask_stats["valid_tokens"] / epoch_mask_stats["total_tokens"] * 100
+                    avg_valid_tokens = epoch_mask_stats["valid_tokens"] / epoch_mask_stats["sample_count"]
+                else:
+                    valid_ratio = 0.0
+                    avg_valid_tokens = 0.0
+                print(f"\n📊 Epoch Mask Statistics (local process):")
+                print(f"  Total samples processed: {epoch_mask_stats['sample_count']:,}")
+                print(f"  Total valid tokens: {epoch_mask_stats['valid_tokens']:,}")
+                print(f"  Total possible tokens: {epoch_mask_stats['total_tokens']:,}")
+                print(f"  Valid token ratio: {valid_ratio:.1f}%")
+                print(f"  Average valid tokens per sample: {avg_valid_tokens:.1f}\n")
 
         epoch_loss /= len(dataloader)
         recon_loss /= len(dataloader)
@@ -335,22 +452,18 @@ def ddp_train_moe(rank: int, world_size: int, config: dict) -> None:
             except Exception:
                 pass  # Continue without logging
 
-            # Save checkpoint every 3 epochs or at the end with scheduler state
-            if (epoch + 1) % 3 == 0 or epoch + 1 == config["num_epochs"]:
-                checkpoint_path = os.path.join(config["checkpoint_dir"], f"moe_epoch_{epoch+1}.pth")
-                torch.save(
-                    {
-                        "epoch": epoch + 1,
-                        "model_state": model.module.state_dict(),
-                        "optimizer_state": optimizer.state_dict(),
-                        "scheduler_state": scheduler.state_dict(),
-                    },
-                    checkpoint_path,
-                )
-                print(f"💾 Saved MOE checkpoint at {checkpoint_path}")
-                
-                # Log checkpoint save to wandb
-                wandb.log({"checkpoint_saved": epoch + 1})
+            # Save checkpoint every epoch
+            checkpoint_path = os.path.join(config["checkpoint_dir"], f"moe_epoch_{epoch+1}.pth")
+            torch.save(
+                {
+                    "epoch": epoch + 1,
+                    "model_state": model.module.state_dict(),
+                    "optimizer_state": optimizer.state_dict(),
+                    "scheduler_state": scheduler.state_dict(),
+                },
+                checkpoint_path,
+            )
+            print(f"💾 Saved MOE checkpoint at {checkpoint_path}")
         
         # Step the scheduler at the end of each epoch
         scheduler.step()

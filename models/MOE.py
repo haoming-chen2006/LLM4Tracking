@@ -91,8 +91,11 @@ class FlashNormformerBlock(nn.Module):
 
     def forward(self, x, mask=None, return_attn_weights=False):
         B, T, C = x.shape
+        
+        # Apply input mask if provided
         if mask is not None:
             x = x * mask.unsqueeze(-1)
+            
         x_norm = self.norm1(x)
         qkv = self.qkv_proj(x_norm).chunk(3, dim=-1)
         q = qkv[0].view(B, T, self.num_heads, self.head_dim).transpose(1, 2)
@@ -102,16 +105,26 @@ class FlashNormformerBlock(nn.Module):
         if USE_FLASH:
             attn_mask = None
             if mask is not None:
-                bool_mask = (mask == 0).unsqueeze(1).unsqueeze(2).expand(B, self.num_heads, T, T)
-                attn_mask = bool_mask
-            attn_out = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask,
-                                                      dropout_p=self.dropout.p if self.training else 0.0,
-                                                      is_causal=False)
+                # Create attention mask from padding mask
+                # Convert float mask to boolean and create attention mask
+                mask_bool = mask.bool()  # Convert to boolean first
+                attn_mask = mask_bool.unsqueeze(1).unsqueeze(2)  # [B, 1, 1, T]
+                attn_mask = attn_mask & attn_mask.transpose(-2, -1)  # [B, 1, T, T]
+                attn_mask = ~attn_mask  # Invert the mask
+                
+            attn_out = F.scaled_dot_product_attention(
+                q, k, v,
+                attn_mask=attn_mask,
+                dropout_p=self.dropout.p if self.training else 0.0,
+                is_causal=False
+            )
         else:
+            # Standard attention with proper masking
             attn_scores = (q @ k.transpose(-2, -1)) / math.sqrt(self.head_dim)
             if mask is not None:
-                mask_exp = mask.unsqueeze(1).unsqueeze(2)
-                attn_scores = attn_scores.masked_fill(mask_exp == 0, float('-inf'))
+                mask_exp = mask.unsqueeze(1).unsqueeze(2)  # [B, 1, 1, T]
+                attn_scores = attn_scores.masked_fill(~mask_exp, float('-inf'))
+                
             attn_probs = torch.softmax(attn_scores, dim=-1)
             attn_probs = self.dropout(attn_probs)
             attn_out = attn_probs @ v
@@ -157,20 +170,35 @@ class VQVAENormFormer(nn.Module):
         self.output_projection = nn.Linear(hidden_dim, input_dim)
 
     def forward(self, x, mask=None):
+        # Input projection with mask
         x = self.input_projection(x)
+        if mask is not None:
+            x = x * mask.unsqueeze(-1)
+            
+        # Encoder with mask
         x, aux_loss = self.encoder_normformer(x, mask=mask)
+        
+        # Latent projection with mask
         z_embed = self.latent_projection_in(x)
         if mask is not None:
             z_embed = z_embed * mask.unsqueeze(-1)
+            
+        # VQ layer
         z, vq_out = self.vqlayer(z_embed)
+        
+        # Decoder with mask
         x_reco = self.latent_projection_out(z)
         x_reco, _ = self.decoder_normformer(x_reco, mask=mask)
         x_reco = self.output_projection(x_reco)
+        
+        # Final masking
         if mask is not None:
             x_reco = x_reco * mask.unsqueeze(-1)
+            
         if isinstance(vq_out, dict) and "loss" in vq_out:
-            vq_out["loss"] = vq_out["loss"] + 0.01 * aux_loss  # weighted aux loss
-            vq_out["aux_loss"] = aux_loss  # optional: for logging
+            vq_out["loss"] = vq_out["loss"] + 0.01 * aux_loss
+            vq_out["aux_loss"] = aux_loss
+            
         return x_reco, vq_out
 
 

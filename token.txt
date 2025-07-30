@@ -1,0 +1,29 @@
+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
+
+input_ids are alerady encoded sp input_ids + images
+logits is logits[:,:-1,:] -- ignore the first -- tagrtes areincluding the first
+        with torch.no_grad():
+            img_feat = self.clip.image_encoder(images)
+            clip_embed = self.clip.image_projection(img_feat)
+        prefix = self.transfer_head(clip_embed).unsqueeze(1)
+
+        token_embeds = self.lm.transformer.wte(input_ids)
+        inputs_embeds = torch.cat([prefix, token_embeds], dim=1)
+
+        b, t, _ = inputs_embeds.size()
+        pos = torch.arange(0, t, dtype=torch.long, device=inputs_embeds.device)
+        pos_emb = self.lm.transformer.wpe(pos)
+        x = self.lm.transformer.drop(inputs_embeds + pos_emb)
+        for block in self.lm.transformer.h:
+            x = block(x)
+        x = self.lm.transformer.ln_f(x)
+        logits = self.lm.lm_head(x)
+        # The prefix is not part of the target, so we shift the logits and labels
+        logits = logits[:, :-1, :]
+        targets = input_ids
+
+        loss = torch.nn.functional.cross_entropy(
+            logits.reshape(-1, logits.size(-1)),
+            targets.reshape(-1),
+        )
+        return loss
