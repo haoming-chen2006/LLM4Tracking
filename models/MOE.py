@@ -201,16 +201,25 @@ class VQVAENormFormer(nn.Module):
             
         return x_reco, vq_out
 
-    def encode(self,x,mask=None):
+    def encode(self, x, mask=None):
+        """Encode input particles into the latent space before quantisation."""
         x = self.input_projection(x)
-        x, _ = self.encoder_normformer(x,mask=mask)
+        if mask is not None:
+            x = x * mask.unsqueeze(-1)
+        x, _ = self.encoder_normformer(x, mask=mask)
         z_embed = self.latent_projection_in(x)
+        if mask is not None:
+            z_embed = z_embed * mask.unsqueeze(-1)
         return z_embed
-    def decode(self,embed,mask=None):
-        z,_ = self.vqlayer(embed)
-        x_recon = latent_projection_out(z)
-        x_recon,_ = self.decoder_normformer(x_recon)
+
+    def decode(self, embed, mask=None):
+        """Decode a latent representation back to particle space."""
+        z, _ = self.vqlayer(embed)
+        x_recon = self.latent_projection_out(z)
+        x_recon, _ = self.decoder_normformer(x_recon, mask=mask)
         x_out = self.output_projection(x_recon)
+        if mask is not None:
+            x_out = x_out * mask.unsqueeze(-1)
         return x_out
 
 
