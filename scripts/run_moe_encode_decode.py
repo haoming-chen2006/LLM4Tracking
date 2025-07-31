@@ -1,5 +1,6 @@
 import os
 import sys
+import argparse
 import torch
 import matplotlib.pyplot as plt
 
@@ -11,30 +12,143 @@ from dataloader.dataloader import (
     load_jetclass_label_as_tensor,
 )
 from models.MOE import VQVAENormFormer
-from scripts.moe import MOE_CONFIGS, compute_global_stats
+from scripts.moe import compute_global_stats
 
 
-def load_latest_checkpoint(model: VQVAENormFormer, ckpt_dir: str, device: torch.device) -> None:
-    """Load the most recent checkpoint from ``ckpt_dir`` into ``model``."""
-    ckpts = [f for f in os.listdir(ckpt_dir) if f.startswith("moe_epoch_") and f.endswith(".pth")]
-    if not ckpts:
-        print(f"No checkpoint found in {ckpt_dir}")
-        return
-    latest = max(ckpts, key=lambda x: int(x.split("_")[-1].split(".")[0]))
-    path = os.path.join(ckpt_dir, latest)
-    checkpoint = torch.load(path, map_location=device)
+CONFIGS = {
+    "new": {
+        "batch_size": 512,
+        "checkpoint_dir": "checkpoints/all_checkpoints_vqvae_normformer_flash",
+        "vq_kwargs": {
+            "num_codes": 2048,
+            "beta": 0.25,
+            "affine_lr": 0.0,
+            "sync_nu": 2,
+            "replace_freq": 20,
+            "dim": -1,
+        },
+    },
+    "MOE_med": {
+        "batch_size": 512,
+        "checkpoint_dir": "checkpoints/moe_checkpoints_vqvae_moe_med",
+        "vq_kwargs": {
+            "num_codes": 4096,
+            "beta": 0.8,
+            "affine_lr": 1.0,
+            "sync_nu": 2,
+            "replace_freq": 3,
+            "dim": -1,
+        },
+    },
+    "MOE_large": {
+        "batch_size": 512,
+        "checkpoint_dir": "checkpoints/moe_checkpoints_vqvae_moe_large",
+        "vq_kwargs": {
+            "num_codes": 8192,
+            "beta": 0.9,
+            "affine_lr": 0.0,
+            "sync_nu": 5,
+            "replace_freq": 2,
+            "dim": -1,
+        },
+    },
+    "masked": {
+        "batch_size": 512,
+        "checkpoint_dir": "checkpoints/all_checkpoints_vqvae_normformer_flash_masked",
+        "vq_kwargs": {
+            "num_codes": 2048,
+            "beta": 0.25,
+            "affine_lr": 0.0,
+            "sync_nu": 2,
+            "replace_freq": 20,
+            "dim": -1,
+        },
+    },
+    "particle": {
+        "batch_size": 512,
+        "checkpoint_dir": "checkpoints/all_checkpoints_vqvae_normformer_new",
+        "vq_kwargs": {
+            "num_codes": 2048,
+            "beta": 0.25,
+            "affine_lr": 0.0,
+            "sync_nu": 2,
+            "replace_freq": 20,
+            "dim": -1,
+        },
+    },
+}
+
+LABELS = [
+    "HToBB",
+    "HToCC",
+    "HToGG",
+    "HToWW4Q",
+    "HToWW2Q1L",
+    "ZToQQ",
+    "WToQQ",
+    "TTBar",
+    "TTBarLep",
+    "ZJetsToNuNu",
+]
+
+
+def load_checkpoint(
+    model: VQVAENormFormer,
+    ckpt_dir: str,
+    device: torch.device,
+    epoch: int | None = None,
+) -> None:
+    """Load checkpoint ``epoch`` from ``ckpt_dir`` into ``model``.
+
+    If ``epoch`` is ``None`` the latest checkpoint is used."""
+    ckpt_path = None
+    if epoch is not None:
+        for prefix in ("moe_epoch_", "vqvae_epoch_"):
+            candidate = os.path.join(ckpt_dir, f"{prefix}{epoch}.pth")
+            if os.path.exists(candidate):
+                ckpt_path = candidate
+                break
+    if ckpt_path is None:
+        ckpts = [f for f in os.listdir(ckpt_dir) if f.endswith(".pth")]
+        if not ckpts:
+            print(f"No checkpoint found in {ckpt_dir}")
+            return
+        ckpts.sort(key=lambda x: int(x.split("_")[-1].split(".")[0]))
+        ckpt_path = os.path.join(ckpt_dir, ckpts[-1])
+
+    checkpoint = torch.load(ckpt_path, map_location=device)
     model.load_state_dict(checkpoint["model_state"], strict=False)
-    print(f"Loaded checkpoint: {path}")
+    print(f"Loaded checkpoint: {ckpt_path}")
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Encode/decode with a trained model")
+    parser.add_argument(
+        "--model",
+        choices=CONFIGS.keys(),
+        default="MOE_med",
+        help="Model configuration to use",
+    )
+    parser.add_argument(
+        "--epoch",
+        type=int,
+        help="Epoch number of the checkpoint to load (default: latest)",
+    )
+    parser.add_argument(
+        "--label",
+        choices=LABELS,
+        default="HToBB",
+        help="JetClass label to evaluate",
+    )
+    return parser.parse_args()
 
 
 def main() -> None:
+    args = parse_args()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    config = MOE_CONFIGS["MOE_med"]
+    config = CONFIGS[args.model]
 
-    # Compute global normalisation statistics
-    dataset = load_jetclass_label_as_dataset(
-        label="HToBB", start=config["start"], end=config["start"] + 1
-    )
+    dataset = load_jetclass_label_as_dataset(label=args.label, start=10, end=11)
     mean, std = compute_global_stats(dataset, config["batch_size"], False, False)
     mean = mean.to(device)
     std = std.to(device)
@@ -48,17 +162,16 @@ def main() -> None:
         num_blocks=3,
         vq_kwargs=config["vq_kwargs"],
     ).to(device)
-    load_latest_checkpoint(model, config["checkpoint_dir"], device)
+    load_checkpoint(model, config["checkpoint_dir"], device, args.epoch)
 
     model.eval()
     for p in model.parameters():
         p.requires_grad = False
 
-    # Grab a single batch for testing
     loader = load_jetclass_label_as_tensor(
-        label="HToBB",
-        start=config["start"],
-        end=config["start"] + 1,
+        label=args.label,
+        start=10,
+        end=11,
         batch_size=config["batch_size"],
     )
     x_particles, _, _ = next(iter(loader))
