@@ -201,6 +201,19 @@ class VQVAENormFormer(nn.Module):
             
         return x_reco, vq_out
 
+    def encode(self,x,mask=None):
+        x = self.input_projection(x)
+        x, _ = self.encoder_normformer(x,mask=mask)
+        z_embed = self.latent_projection_in(x)
+        return z_embed
+    def decode(self,embed,mask=None):
+        z,_ = self.vqlayer(embed)
+        x_recon = latent_projection_out(z)
+        x_recon,_ = self.decoder_normformer(x_recon)
+        x_out = self.output_projection(x_recon)
+        return x_out
+
+
 
 
 def plot_model(model, samples, device="cuda", n_examples_to_plot=200, masks=None, saveas=None):
