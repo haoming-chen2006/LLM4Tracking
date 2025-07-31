@@ -68,27 +68,30 @@ def main() -> None:
     with torch.no_grad():
         embed = model.encode(x_norm)
         recon = model.decode(embed)
-
+    print("original shape", x_norm.shape)
     print("Embedding shape:", embed.shape)
     print("Reconstruction shape:", recon.shape)
 
-    # Simple visualisation
-    e_cpu = embed[..., :2].detach().cpu().view(-1, 2)
-    r_cpu = recon[..., :2].detach().cpu().view(-1, 2)
-    x_cpu = x_particles[..., :2].detach().cpu().view(-1, 2)
+    # === Plot original vs reconstruction (jet features) ===
+    from plot.plot import reconstruct_jet_features_from_particles, plot_tensor_jet_features
+    orig_jets = reconstruct_jet_features_from_particles(x_particles)
+    recon_jets = reconstruct_jet_features_from_particles(recon)
+    plot_tensor_jet_features([orig_jets, recon_jets], labels=["Original", "Reconstruction"], filename="moe_encode_decode_jet_overlay.png")
 
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
-    axes[0].scatter(e_cpu[:, 0], e_cpu[:, 1], s=4, alpha=0.5)
-    axes[0].set_title("Latent space (first 2 dims)")
-
-    axes[1].scatter(x_cpu[:, 0], x_cpu[:, 1], label="orig", s=4, alpha=0.5)
-    axes[1].scatter(r_cpu[:, 0], r_cpu[:, 1], label="recon", s=4, alpha=0.5)
-    axes[1].legend()
-    axes[1].set_title("Original vs Reconstruction")
-
-    fig.tight_layout()
-    plt.savefig("test_encode_decode.png")
-    print("Saved plot to test_encode_decode.png")
+    # === Embedding space visualization (PCA) ===
+    import matplotlib.pyplot as plt
+    from sklearn.decomposition import PCA
+    embed_np = embed.detach().cpu().numpy().reshape(embed.shape[0], -1)
+    pca = PCA(n_components=2)
+    embed_2d = pca.fit_transform(embed_np)
+    plt.figure(figsize=(6, 5))
+    plt.scatter(embed_2d[:, 0], embed_2d[:, 1], alpha=0.5, s=10)
+    plt.title("Embedding Space (PCA)")
+    plt.xlabel("PC1")
+    plt.ylabel("PC2")
+    plt.tight_layout()
+    plt.savefig("moe_encode_decode_embedding_pca.png", dpi=200)
+    print("✅ Saved PCA embedding plot to moe_encode_decode_embedding_pca.png")
 
 
 if __name__ == "__main__":

@@ -7,11 +7,14 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.utils.data import DataLoader, DistributedSampler, TensorDataset
 from torch.cuda.amp import GradScaler, autocast
-from plot.plot import plot_tensor_jet_features, plot_difference
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from plot.plot import (
+    plot_tensor_jet_features,
+    reconstruct_jet_features_from_particles,
+    plot_difference,
+)
 
-import models.vqvaeMLP_jet as vqvae
 
 LABELS = [
     "HToBB", "HToCC", "HToGG", "HToWW4Q", "HToWW2Q1L",
@@ -22,10 +25,10 @@ WORLD_SIZE = 4
 
 CONFIG = {
     "batch_size": 512,
-    "num_epochs": 20,
+    "num_epochs": 40,
     "learning_rate": 2e-4,
-    "start": 10,
-    "end": 40,
+    "start": 40,
+    "end": 70,
     "vq_kwargs": {
         "num_codes": 1024,
         "beta": 0.25,
