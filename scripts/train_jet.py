@@ -11,8 +11,6 @@ from plot.plot import plot_tensor_jet_features, plot_difference
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import models.vqvaeMLP_jet as vqvae
-
 LABELS = [
     "HToBB", "HToCC", "HToGG", "HToWW4Q", "HToWW2Q1L",
     "ZToQQ", "WToQQ", "TTBar", "TTBarLep", "ZJetsToNuNu",
@@ -55,6 +53,9 @@ def cleanup() -> None:
 
 def eval_jet(config: dict) -> None:
     """Evaluate trained model on all jet labels and create plots."""
+    # Import inside the function so spawned workers also resolve the module.
+    import models.vqvaeMLP_jet as vqvae
+
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     dataset = load_all_labels_jet_dataset(config["start"], config["end"])
@@ -145,6 +146,10 @@ def compute_global_stats(dataset: TensorDataset, batch_size: int):
 
 
 def ddp_train(rank: int, world_size: int, config: dict) -> None:
+    # Local import required for torch.multiprocessing with the ``spawn`` method
+    # to avoid ``NameError: name 'vqvae' is not defined`` on some systems.
+    import models.vqvaeMLP_jet as vqvae
+
     setup(rank, world_size)
     device = torch.device(f"cuda:{rank}")
 
