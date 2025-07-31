@@ -7,6 +7,7 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.utils.data import DataLoader, DistributedSampler, TensorDataset
 from torch.cuda.amp import GradScaler, autocast
+from plot.plot import plot_tensor_jet_features, plot_difference
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -50,6 +51,65 @@ def setup(rank: int, world_size: int) -> None:
 
 def cleanup() -> None:
     dist.destroy_process_group()
+
+
+def eval_jet(config: dict) -> None:
+    """Evaluate trained model on all jet labels and create plots."""
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+    dataset = load_all_labels_jet_dataset(config["start"], config["end"])
+    loader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=False)
+
+    mean, std = compute_global_stats(dataset, config["batch_size"])
+    mean = mean.to(device)
+    std = std.to(device)
+
+    model = vqvae.VQVAEJet(
+        input_dim=3,
+        hidden_dim=256,
+        z_dim=128,
+        num_embeddings=config["vq_kwargs"]["num_codes"],
+        commitment_cost=config["vq_kwargs"]["beta"],
+        mean=mean,
+        std=std,
+        vq_kwargs=config["vq_kwargs"],
+    ).to(device)
+
+    ckpts = [f for f in os.listdir(config["checkpoint_dir"]) if f.startswith("jet_epoch_") and f.endswith(".pth")]
+    if ckpts:
+        latest = max(ckpts, key=lambda x: int(x.split("_")[-1].split(".")[0]))
+        ckpt_path = os.path.join(config["checkpoint_dir"], latest)
+        checkpoint = torch.load(ckpt_path, map_location=device)
+        model.load_state_dict(checkpoint["model_state"])
+
+    model.eval()
+    orig_jets = []
+    recon_jets = []
+    with torch.no_grad():
+        for x_j, _ in loader:
+            x_j = x_j.to(device)
+            out, _ = model(x_j)
+            orig_jets.append(x_j)
+            recon_jets.append(out)
+
+    if not orig_jets:
+        print("No evaluation data available")
+        return
+
+    orig_jets = torch.cat(orig_jets, dim=0)
+    recon_jets = torch.cat(recon_jets, dim=0)
+
+    plot_tensor_jet_features(
+        [orig_jets, recon_jets],
+        labels=("Original", "Reconstructed"),
+        filename=os.path.join(PLOT_DIR, "jet_recon_overlay.png"),
+    )
+
+    plot_difference(
+        orig_jets,
+        recon_jets,
+        filename=os.path.join(PLOT_DIR, "jet_feature_difference.png"),
+    )
 
 
 def load_all_labels_jet_dataset(start: int, end: int) -> TensorDataset:
@@ -147,6 +207,7 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
         total_loss = torch.tensor(0.0, device=device)
         recon_total = torch.tensor(0.0, device=device)
         vq_total = torch.tensor(0.0, device=device)
+        code_hist = torch.zeros(config["vq_kwargs"]["num_codes"], device=device, dtype=torch.long)
 
         for x_jets, _ in dataloader:
             x_jets = x_jets.to(device)
@@ -156,6 +217,10 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
                 r_loss = recon_loss_fn(out, x_jets)
                 if isinstance(vq_loss, dict):
                     v_loss = vq_loss.get("loss", torch.tensor(0.0, device=device))
+                    codes = vq_loss.get("q")
+                    if codes is not None:
+                        hist = torch.bincount(codes.view(-1), minlength=config["vq_kwargs"]["num_codes"])
+                        code_hist += hist.to(device)
                 else:
                     v_loss = vq_loss
                 loss = r_loss + v_loss
@@ -175,14 +240,17 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
         dist.all_reduce(total_loss)
         dist.all_reduce(recon_total)
         dist.all_reduce(vq_total)
+        dist.all_reduce(code_hist)
         total_loss /= world_size
         recon_total /= world_size
         vq_total /= world_size
+        unique_codes = torch.count_nonzero(code_hist).item()
 
         if rank == 0:
             print(
                 f"Epoch {epoch+1}/{config['num_epochs']} - Loss: {total_loss.item():.4f} | "
-                f"Recon: {recon_total.item():.4f} | VQ: {vq_total.item():.4f}"
+                f"Recon: {recon_total.item():.4f} | VQ: {vq_total.item():.4f} | "
+                f"Codes: {unique_codes}/{config['vq_kwargs']['num_codes']}"
             )
             torch.save(
                 {
@@ -199,6 +267,7 @@ def ddp_train(rank: int, world_size: int, config: dict) -> None:
 def main() -> None:
     config = CONFIG.copy()
     mp.spawn(ddp_train, args=(WORLD_SIZE, config), nprocs=WORLD_SIZE, join=True)
+    eval_jet(config)
 
 
 if __name__ == "__main__":
