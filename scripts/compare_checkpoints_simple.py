@@ -18,16 +18,10 @@ PLOT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__
                         "plot", "checkpoint_comparison")
 os.makedirs(PLOT_DIR, exist_ok=True)
 
-TRAIN_TYPE = "vqvae"  # Use available checkpoint
-CHECKPOINT_EPOCH = 10  # Single epoch for simplified comparison
+TRAIN_TYPE = "MOE_large"  # Change this as needed
+CHECKPOINT_EPOCH = 1  # Single epoch for simplified comparison
 
 CONFIGS = {
-    "vqvae": {
-        "batch_size": 512,
-        "checkpoint_dir": "checkpoints/checkpoints_vqvae",
-        "vq_kwargs": {"num_codes": 2048, "beta": 0.25, "affine_lr": 0.0,
-                      "sync_nu": 2, "replace_freq": 20, "dim": -1},
-    },
     "MOE_med": {
         "batch_size": 512,
         "checkpoint_dir": "checkpoints/moe_checkpoints_vqvae_moe_med_1",
@@ -125,12 +119,7 @@ def compute_global_stats(dataset, batch_size, log_pt=False, use_mask=False):
 def load_model_and_checkpoint(config, checkpoint_path, device):
     use_mask = False
     log_pt = False
-    
-    # Choose model based on config type
-    if config["type"] == "vqvae":
-        model_module = __import__("models.NormFormer", fromlist=["VQVAENormFormer"])
-    else:
-        model_module = __import__("models.MOE", fromlist=["VQVAENormFormer"])
+    model_module = __import__("models.MOE", fromlist=["VQVAENormFormer"])
 
     model = model_module.VQVAENormFormer(
         input_dim=3,
@@ -291,19 +280,14 @@ def main():
     print(f"🔍 Evaluating {TRAIN_TYPE} model checkpoint")
     
     # Find checkpoint
-    if config["type"] == "vqvae":
-        ckpts = [f for f in os.listdir(config["checkpoint_dir"]) 
-                 if f.startswith("vqvae_epoch_") and f.endswith(".pth")]
-        target_file = f"vqvae_epoch_{CHECKPOINT_EPOCH}.pth"
-    else:
-        ckpts = [f for f in os.listdir(config["checkpoint_dir"]) 
-                 if f.startswith("moe_epoch_") and f.endswith(".pth")]
-        target_file = f"moe_epoch_{CHECKPOINT_EPOCH}.pth"
+    ckpts = [f for f in os.listdir(config["checkpoint_dir"]) 
+             if f.startswith("moe_epoch_") and f.endswith(".pth")]
     
     if not ckpts:
         print("❌ No checkpoints found!")
         return
     
+    target_file = f"moe_epoch_{CHECKPOINT_EPOCH}.pth"
     if target_file not in ckpts:
         print(f"❌ Checkpoint for epoch {CHECKPOINT_EPOCH} not found!")
         return
