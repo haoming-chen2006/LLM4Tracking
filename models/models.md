@@ -1,56 +1,11 @@
 # Model Documentation
 
-This document provides detailed information about the models implemented in the HEP models project. All models are based on Vector Quantized Variational Autoencoders (VQ-VAE) designed to learn discrete representations of jet constituents.
+This document provides detailed information about the models implemented in the HEP models project. The models are of two major classes -- VQVAE encoders that learns the jet/particle distribution, and bakcbones that integrate the vqvae with a pretrained language model, usually NanoGPT or TinyLLama.
 
-## Overview
-
-The models in this project follow a common architecture pattern:
-1. **Encoder**: Maps input particles to continuous embeddings
-2. **Vector Quantization**: Discretizes embeddings using learnable codebooks
-3. **Decoder**: Reconstructs particles from quantized embeddings
-
-All models support both particle-level and jet-level reconstruction, with various architectural improvements for handling variable-length sequences and scaling to larger datasets.
-
-## Model Types
 
 ### 1. VQ-VAE MLP Models
+All includes an encoder, a decoder, and a vectorquant based quantizer in the middle. With extra normalization layer (norm_former) and mixture of expert (MOE) applied to specific variations.
 
-#### VQ-VAE MLP (Particles) - `vqvaeMLP_particle.py`
-- **Purpose**: Simple baseline for particle-level reconstruction
-- **Architecture**: Multi-layer perceptron with residual connections
-- **Input**: Individual particle features `[pt, eta, phi]`
-- **Output**: Reconstructed particle features
-- **Use Case**: Baseline experiments, debugging, small-scale testing
-
-**Key Features:**
-- Lightweight architecture (~1M parameters)
-- Fast training and inference
-- No attention mechanisms
-- Fixed-size input (requires padding)
-
-**Configuration:**
-```python
-model = VQVAEMLPParticle(
-    input_dim=3,          # pt, eta, phi
-    hidden_dim=256,       # MLP hidden dimension
-    latent_dim=128,       # Embedding dimension
-    num_codes=1024,       # Codebook size
-    beta=0.25            # VQ loss weight
-)
-```
-
-#### VQ-VAE MLP (Jets) - `vqvaeMLP_jet.py`
-- **Purpose**: Jet-level feature reconstruction
-- **Architecture**: MLP operating on global jet features
-- **Input**: Jet-level features `[pt, eta, phi, mass]`
-- **Output**: Reconstructed jet features
-- **Use Case**: Global jet property modeling
-
-**Key Features:**
-- Extremely lightweight (~100K parameters)
-- Direct jet feature reconstruction
-- No constituent particle modeling
-- Fast convergence
 
 ### 2. NormFormer Models
 

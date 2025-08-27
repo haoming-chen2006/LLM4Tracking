@@ -1,0 +1,50 @@
+# Core Machine Learning Libraries
+torch>=2.0.0
+torchvision
+numpy
+matplotlib
+pandas
+seaborn
+
+# Scientific Computing & Physics
+awkward
+uproot
+vector
+scikit-learn
+
+# Vector Quantization
+vqtorch
+
+# Neural Network Components
+timm
+transformers
+
+# Experiment Tracking & Logging
+wandb
+
+# Configuration Management
+omegaconf
+hydra-core
+
+# Lightning Framework
+lightning
+pytorch-lightning
+
+# Experiment Tracking (Alternative)
+comet-ml
+
+# Utilities
+pyrootutils
+
+# Development Tools (Optional)
+jupyter
+ipython
+
+# Additional dependencies that might be needed
+einops  # For tensor operations (commonly used with transformers)
+flash-attn  # For efficient attention (if using flash attention)
+
+# Gabbro specific (appears to be a custom package)
+# Note: gabbro appears to be a custom package that may need to be installed separately
+# If it's available via pip, uncomment the line below:
+# gabbro

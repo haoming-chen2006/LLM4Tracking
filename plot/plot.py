@@ -255,7 +255,7 @@ def reconstruct_jet_features_from_particles(x_particles: torch.Tensor) -> torch.
     return jets_tensor
 
 
-def plot_difference(orig_jets: torch.Tensor, recon_jets: torch.Tensor,
+def plot_differnece(orig_jets: torch.Tensor, recon_jets: torch.Tensor,
                     filename: str = "jet_feature_difference.png") -> None:
     """Plot distributions of differences between reconstructed and original jets."""
     if orig_jets.shape != recon_jets.shape:
